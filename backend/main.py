@@ -1,12 +1,32 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+import json
+from io import BytesIO
+
+import pandas as pd
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from services.excel_processor import get_excel_sheets, process_excel
+from database.table_service import (
+    append_existing_table,
+    count_period_rows,
+    create_new_table,
+    get_all_tables,
+    get_schema_mapping,
+    replace_period_data,
+    require_schema_mapping,
+)
+from master_data.banks import (
+    get_all_banks,
+    get_bank_by_name,
+)
+from services.excel_processor import (
+    get_excel_sheets,
+    process_excel,
+)
 
 
 app = FastAPI(
     title="OJK Data Warehouse API",
-    version="1.0.0",
+    version="1.2.0",
 )
 
 
@@ -27,6 +47,196 @@ app.add_middleware(
 
 
 # =====================================================
+# HELPERS
+# =====================================================
+
+SYSTEM_COLUMNS = {"bank_id", "bulan", "tahun"}
+
+
+def dataframe_to_records(df):
+    return json.loads(
+        df.to_json(
+            orient="records",
+            date_format="iso",
+        )
+    )
+
+
+def parse_json_list(value: str, field_name: str):
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            f"Format {field_name} tidak valid."
+        ) from error
+
+    if not isinstance(parsed, list):
+        raise ValueError(
+            f"{field_name} harus berupa array JSON."
+        )
+
+    return parsed
+
+
+def parse_json_dict(value: str, field_name: str):
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            f"Format {field_name} tidak valid."
+        ) from error
+
+    if not isinstance(parsed, dict):
+        raise ValueError(
+            f"{field_name} harus berupa object JSON."
+        )
+
+    return parsed
+
+
+def clean_existing_value(value):
+    if pd.isna(value):
+        return None
+
+    if isinstance(value, pd.Timestamp):
+        return value.strftime("%Y-%m-%d")
+
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+
+    if isinstance(value, str):
+        value = value.strip()
+        return value if value else None
+
+    return value
+
+
+def attach_bank_id(df, bank_name: str):
+    bank = get_bank_by_name(bank_name)
+
+    if "bank_id" in df.columns:
+        raise ValueError(
+            "File sumber sudah memiliki kolom 'bank_id'. "
+            "Nama tersebut dicadangkan sebagai kolom sistem."
+        )
+
+    df = df.copy()
+    df.insert(0, "bank_id", bank["bank_id"])
+
+    return df, bank
+
+
+def process_existing_excel(
+    *,
+    file_bytes: bytes,
+    table_name: str,
+    sheet_name: str,
+    first_data_row: int,
+    month: int,
+    year: int,
+):
+    """
+    Existing table:
+    - tidak membaca header dari file;
+    - data dimulai dari first_data_row;
+    - nama kolom mengikuti schema mapping tabel existing;
+    - mapping dilakukan berdasarkan ordinal/urutan kolom.
+    """
+    if not first_data_row or int(first_data_row) < 1:
+        raise ValueError(
+            "Baris pertama data minimal bernilai 1."
+        )
+
+    mapping = require_schema_mapping(table_name)
+
+    expected_columns = [
+        item["database_column"]
+        for item in mapping
+    ]
+
+    df = pd.read_excel(
+        BytesIO(file_bytes),
+        sheet_name=sheet_name,
+        header=None,
+        skiprows=int(first_data_row) - 1,
+        dtype=object,
+    )
+
+    # Hanya buang row/column yang benar-benar kosong seluruhnya.
+    df = df.dropna(axis=0, how="all")
+    df = df.dropna(axis=1, how="all")
+    df = df.reset_index(drop=True)
+
+    actual_column_count = len(df.columns)
+    expected_column_count = len(expected_columns)
+
+    if actual_column_count != expected_column_count:
+        raise ValueError(
+            "Struktur file tidak sesuai dengan schema tabel "
+            f"'{table_name}'. Tabel membutuhkan "
+            f"{expected_column_count} kolom data, sedangkan file "
+            f"menghasilkan {actual_column_count} kolom setelah "
+            "kolom kosong dibersihkan. Periksa Baris Pertama Data "
+            "atau perubahan format file."
+        )
+
+    # Header preview dan save mengikuti database, bukan header XLS.
+    df.columns = expected_columns
+
+    for column in df.columns:
+        df[column] = df[column].map(
+            clean_existing_value
+        )
+
+    df["bulan"] = int(month)
+    df["tahun"] = int(year)
+
+    return df
+
+
+def process_upload_by_mode(
+    *,
+    file_bytes: bytes,
+    table_mode: str,
+    table_name: str,
+    sheet_name: str,
+    header_row: int | None,
+    first_data_row: int | None,
+    month: int,
+    year: int,
+):
+    if table_mode == "new":
+        if not header_row or int(header_row) < 1:
+            raise ValueError(
+                "Baris Header wajib diisi untuk tabel baru."
+            )
+
+        return process_excel(
+            file_bytes=file_bytes,
+            sheet_name=sheet_name,
+            header_row=int(header_row),
+            month=month,
+            year=year,
+        )
+
+    if table_mode == "existing":
+        return process_existing_excel(
+            file_bytes=file_bytes,
+            table_name=table_name,
+            sheet_name=sheet_name,
+            first_data_row=int(
+                first_data_row or 0
+            ),
+            month=month,
+            year=year,
+        )
+
+    raise ValueError(
+        "table_mode harus bernilai 'new' atau 'existing'."
+    )
+
+
+# =====================================================
 # HEALTH CHECK
 # =====================================================
 
@@ -39,22 +249,73 @@ def root():
 
 
 # =====================================================
-# DETECT SHEETS
+# DATABASE TABLES
 # =====================================================
 
-@app.post("/excel/sheets")
-async def detect_sheets(file: UploadFile = File(...)):
+@app.get("/tables")
+def list_tables():
     try:
-        file_bytes = await file.read()
-        sheets = get_excel_sheets(file_bytes)
+        tables = get_all_tables()
 
         return {
-            "filename": file.filename,
-            "sheets": sheets,
+            "status": "success",
+            "count": len(tables),
+            "tables": tables,
         }
 
     except Exception as error:
-        print("ERROR /excel/sheets:", repr(error))
+        print(
+            "ERROR /tables:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.get("/tables/{table_name}/schema-mapping")
+def table_schema_mapping(table_name: str):
+    try:
+        mapping = get_schema_mapping(
+            table_name
+        )
+
+        return {
+            "status": "success",
+            "table_name": table_name,
+            "count": len(mapping),
+            "mapping": mapping,
+        }
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+# =====================================================
+# MASTER BANKS
+# =====================================================
+
+@app.get("/banks")
+def list_banks():
+    try:
+        banks = get_all_banks()
+
+        return {
+            "status": "success",
+            "count": len(banks),
+            "banks": banks,
+        }
+
+    except Exception as error:
+        print(
+            "ERROR /banks:",
+            repr(error),
+        )
 
         raise HTTPException(
             status_code=400,
@@ -63,68 +324,479 @@ async def detect_sheets(file: UploadFile = File(...)):
 
 
 # =====================================================
-# PREVIEW
+# EXCEL SHEETS
+# =====================================================
+
+@app.post("/excel/sheets")
+async def detect_sheets(
+    file: UploadFile = File(...),
+):
+    try:
+        file_bytes = await file.read()
+
+        sheets = get_excel_sheets(
+            file_bytes
+        )
+
+        return {
+            "filename": file.filename,
+            "sheets": sheets,
+        }
+
+    except Exception as error:
+        print(
+            "ERROR /excel/sheets:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+# =====================================================
+# PREVIEW EXCEL
 # =====================================================
 
 @app.post("/excel/preview")
 async def preview_excel(
     file: UploadFile = File(...),
+    table_mode: str = Form(...),
     table_name: str = Form(...),
+    bank_name: str = Form(...),
     month: int = Form(...),
     year: int = Form(...),
     sheet_name: str = Form(...),
-    header_row: int = Form(...),
+    header_row: int | None = Form(None),
+    first_data_row: int | None = Form(None),
 ):
     try:
-        print(
-            "PREVIEW REQUEST:",
-            {
-                "filename": file.filename,
-                "table_name": table_name,
-                "month": month,
-                "year": year,
-                "sheet_name": sheet_name,
-                "header_row": header_row,
-            },
-        )
+        table_mode = table_mode.strip().lower()
 
         file_bytes = await file.read()
 
-        df = process_excel(
+        df = process_upload_by_mode(
             file_bytes=file_bytes,
+            table_mode=table_mode,
+            table_name=table_name,
             sheet_name=sheet_name,
             header_row=header_row,
+            first_data_row=first_data_row,
             month=month,
             year=year,
         )
 
-        # Seluruh row dikirim untuk tahap preview/edit row.
-        # Pagination dilakukan di frontend. __row_id hanya ID sementara
-        # dan tidak termasuk schema kolom database.
-        preview_df = df.reset_index(drop=True).astype(object)
-        preview_df = preview_df.where(preview_df.notna(), None)
+        df, bank = attach_bank_id(
+            df,
+            bank_name,
+        )
 
-        preview = preview_df.to_dict(orient="records")
-        for row_id, row in enumerate(preview, start=1):
-            row["__row_id"] = row_id
+        df = df.reset_index(drop=True)
+        df.insert(
+            0,
+            "__row_id",
+            range(1, len(df) + 1),
+        )
+
+        preview = dataframe_to_records(df)
+
+        database_columns = [
+            str(column)
+            for column in df.columns
+            if column != "__row_id"
+        ]
 
         return {
+            "status": "success",
             "filename": file.filename,
+            "table_mode": table_mode,
             "table_name": table_name,
+            "bank_name": bank["bank_name"],
+            "bank_id": bank["bank_id"],
             "month": month,
             "year": year,
             "sheet_name": sheet_name,
-            "header_row": header_row,
-
-            # Kontrak response yang digunakan frontend.
+            "header_row": (
+                header_row
+                if table_mode == "new"
+                else None
+            ),
+            "first_data_row": (
+                first_data_row
+                if table_mode == "existing"
+                else None
+            ),
             "row_count": len(df),
-            "column_count": len(df.columns),
-            "columns": [str(column) for column in df.columns],
+            "column_count": len(
+                database_columns
+            ),
+            "columns": database_columns,
             "preview": preview,
         }
 
     except Exception as error:
-        print("ERROR /excel/preview:", repr(error))
+        print(
+            "ERROR /excel/preview:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+# =====================================================
+# CHECK EXISTING PERIOD
+# =====================================================
+
+@app.post("/excel/check-period")
+async def check_excel_period(
+    table_name: str = Form(...),
+    bank_name: str = Form(...),
+    month: int = Form(...),
+    year: int = Form(...),
+):
+    try:
+        bank = get_bank_by_name(
+            bank_name
+        )
+
+        row_count = count_period_rows(
+            table_name=table_name,
+            bank_id=bank["bank_id"],
+            month=month,
+            year=year,
+        )
+
+        return {
+            "status": "success",
+            "table_name": table_name,
+            "bank_name": bank["bank_name"],
+            "bank_id": bank["bank_id"],
+            "month": month,
+            "year": year,
+            "exists": row_count > 0,
+            "row_count": row_count,
+        }
+
+    except Exception as error:
+        print(
+            "ERROR /excel/check-period:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+# =====================================================
+# SAVE EXCEL TO DATABASE
+# =====================================================
+
+@app.post("/excel/save")
+async def save_excel(
+    file: UploadFile = File(...),
+    table_mode: str = Form(...),
+    table_name: str = Form(...),
+    bank_name: str = Form(...),
+    month: int = Form(...),
+    year: int = Form(...),
+    sheet_name: str = Form(...),
+    header_row: int | None = Form(None),
+    first_data_row: int | None = Form(None),
+    deleted_rows: str = Form("[]"),
+    column_mapping: str = Form("{}"),
+    duplicate_action: str = Form("block"),
+):
+    try:
+        table_mode = table_mode.strip().lower()
+
+        if table_mode not in {
+            "new",
+            "existing",
+        }:
+            raise ValueError(
+                "table_mode harus bernilai 'new' atau 'existing'."
+            )
+
+        duplicate_action = duplicate_action.strip().lower()
+
+        if duplicate_action not in {
+            "block",
+            "replace",
+            "append",
+        }:
+            raise ValueError(
+                "duplicate_action harus bernilai "
+                "'block', 'replace', atau 'append'."
+            )
+
+        deleted_row_ids = parse_json_list(
+            deleted_rows,
+            "deleted_rows",
+        )
+
+        column_map = parse_json_dict(
+            column_mapping,
+            "column_mapping",
+        )
+
+        file_bytes = await file.read()
+
+        df = process_upload_by_mode(
+            file_bytes=file_bytes,
+            table_mode=table_mode,
+            table_name=table_name,
+            sheet_name=sheet_name,
+            header_row=header_row,
+            first_data_row=first_data_row,
+            month=month,
+            year=year,
+        )
+
+        df, bank = attach_bank_id(
+            df,
+            bank_name,
+        )
+
+        original_rows = len(df)
+
+        df = df.reset_index(drop=True)
+        df.insert(
+            0,
+            "__row_id",
+            range(1, len(df) + 1),
+        )
+
+        normalized_deleted_rows = []
+
+        for row_id in deleted_row_ids:
+            try:
+                parsed_row_id = int(row_id)
+            except (TypeError, ValueError) as error:
+                raise ValueError(
+                    f"Row ID '{row_id}' tidak valid."
+                ) from error
+
+            if parsed_row_id < 1:
+                raise ValueError(
+                    "Row ID harus lebih besar dari 0."
+                )
+
+            if (
+                parsed_row_id
+                not in normalized_deleted_rows
+            ):
+                normalized_deleted_rows.append(
+                    parsed_row_id
+                )
+
+        valid_row_ids = set(
+            df["__row_id"].tolist()
+        )
+
+        invalid_row_ids = [
+            row_id
+            for row_id in normalized_deleted_rows
+            if row_id not in valid_row_ids
+        ]
+
+        if invalid_row_ids:
+            raise ValueError(
+                "Terdapat row ID yang tidak valid: "
+                + ", ".join(
+                    map(str, invalid_row_ids)
+                )
+            )
+
+        if normalized_deleted_rows:
+            df = df[
+                ~df["__row_id"].isin(
+                    normalized_deleted_rows
+                )
+            ]
+
+        df = df.drop(
+            columns=["__row_id"]
+        ).reset_index(drop=True)
+
+        if df.empty:
+            raise ValueError(
+                "Tidak ada data yang dapat disimpan "
+                "setelah penghapusan row."
+            )
+
+        previous_period_rows = 0
+
+        # -----------------------------------------
+        # NEW TABLE
+        # -----------------------------------------
+        if table_mode == "new":
+            protected_columns = SYSTEM_COLUMNS
+
+            for old_name, new_name in column_map.items():
+                old_name = str(old_name)
+                new_name = str(
+                    new_name
+                ).strip()
+
+                if old_name in protected_columns:
+                    raise ValueError(
+                        f"Kolom sistem '{old_name}' "
+                        "tidak dapat diubah."
+                    )
+
+                if old_name not in df.columns:
+                    raise ValueError(
+                        f"Kolom '{old_name}' "
+                        "tidak ditemukan."
+                    )
+
+                if not new_name:
+                    raise ValueError(
+                        f"Nama baru untuk kolom "
+                        f"'{old_name}' tidak boleh kosong."
+                    )
+
+            source_business_columns = [
+                str(column)
+                for column in df.columns
+                if str(column) not in SYSTEM_COLUMNS
+            ]
+
+            schema_mapping = []
+
+            for ordinal, source_column in enumerate(
+                source_business_columns,
+                start=1,
+            ):
+                final_column = str(
+                    column_map.get(
+                        source_column,
+                        source_column,
+                    )
+                ).strip()
+
+                schema_mapping.append(
+                    {
+                        "source_ordinal": ordinal,
+                        "source_column": source_column,
+                        "database_column": final_column,
+                    }
+                )
+
+            if column_map:
+                df = df.rename(
+                    columns=column_map
+                )
+
+            result = create_new_table(
+                table_name=table_name,
+                df=df,
+                schema_mapping=schema_mapping,
+            )
+
+        # -----------------------------------------
+        # EXISTING TABLE
+        # -----------------------------------------
+        else:
+            if column_map:
+                raise ValueError(
+                    "Nama kolom tidak dapat diubah "
+                    "saat upload ke tabel existing."
+                )
+
+            previous_period_rows = count_period_rows(
+                table_name=table_name,
+                bank_id=bank["bank_id"],
+                month=month,
+                year=year,
+            )
+
+            if previous_period_rows > 0:
+                if duplicate_action == "block":
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "DUPLICATE_PERIOD",
+                            "message": (
+                                f"Data {bank['bank_name']} periode "
+                                f"{month}/{year} sudah tersedia."
+                            ),
+                            "table_name": table_name,
+                            "bank_name": bank["bank_name"],
+                            "bank_id": bank["bank_id"],
+                            "month": month,
+                            "year": year,
+                            "row_count": previous_period_rows,
+                        },
+                    )
+
+                if duplicate_action == "replace":
+                    result = replace_period_data(
+                        table_name=table_name,
+                        df=df,
+                        bank_id=bank["bank_id"],
+                        month=month,
+                        year=year,
+                    )
+
+                else:
+                    result = append_existing_table(
+                        table_name=table_name,
+                        df=df,
+                    )
+
+            else:
+                result = append_existing_table(
+                    table_name=table_name,
+                    df=df,
+                )
+
+        return {
+            "status": "success",
+            "message": "Data berhasil disimpan ke database.",
+            "table_name": result["table_name"],
+            "table_mode": result["mode"],
+            "bank_name": bank["bank_name"],
+            "bank_id": bank["bank_id"],
+            "month": month,
+            "year": year,
+            "original_rows": original_rows,
+            "deleted_rows": len(
+                normalized_deleted_rows
+            ),
+            "duplicate_action": (
+                result.get("duplicate_action")
+                if table_mode == "existing"
+                else None
+            ),
+            "previous_period_rows": (
+                previous_period_rows
+                if table_mode == "existing"
+                else 0
+            ),
+            "replaced_rows": result.get(
+                "replaced_rows",
+                0,
+            ),
+            "inserted_rows": result[
+                "inserted_rows"
+            ],
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print(
+            "ERROR /excel/save:",
+            repr(error),
+        )
 
         raise HTTPException(
             status_code=400,

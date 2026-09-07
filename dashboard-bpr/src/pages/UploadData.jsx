@@ -1,7 +1,11 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   detectExcelSheets,
   previewExcel,
+  saveExcel,
+  getTables,
+  getBanks,
+  checkPeriod,
 } from '../services/dataWarehouseService'
 import {
   UploadCloud,
@@ -18,6 +22,7 @@ import {
   ChevronLeft,
   ChevronRight,
   PencilLine,
+  Save,
 } from 'lucide-react'
 
 import DashboardLayout from '../layouts/DashboardLayout'
@@ -105,9 +110,14 @@ function UploadData() {
 
   const [tableMode, setTableMode] = useState('existing')
   const [tableName, setTableName] = useState('')
+  const [banks, setBanks] = useState([])
+  const [selectedBankName, setSelectedBankName] = useState('')
+  const [loadingBanks, setLoadingBanks] = useState(false)
+  const [bankLoadError, setBankLoadError] = useState('')
   const [month, setMonth] = useState(1)
   const [year, setYear] = useState(new Date().getFullYear())
   const [headerRow, setHeaderRow] = useState(1)
+  const [firstDataRow, setFirstDataRow] = useState(1)
 
   const [previewData, setPreviewData] = useState(null)
   const [processing, setProcessing] = useState(false)
@@ -118,15 +128,14 @@ function UploadData() {
   const [selectedRowIds, setSelectedRowIds] = useState([])
   const [columnMapping, setColumnMapping] = useState({})
   const [currentPage, setCurrentPage] = useState(1)
+  const [saving, setSaving] = useState(false)
+  const [saveResult, setSaveResult] = useState(null)
+  const [duplicateWarning, setDuplicateWarning] = useState(null)
   const rowsPerPage = 20
 
-  const existingTables = [
-    '1300',
-    '0600',
-    'laporan_keuangan',
-    'kredit_debitur',
-    'pengaduan_konsumen',
-  ]
+  const [existingTables, setExistingTables] = useState([])
+  const [loadingTables, setLoadingTables] = useState(false)
+  const [tableLoadError, setTableLoadError] = useState('')
 
   const fileSize = useMemo(() => {
     if (!file) return ''
@@ -193,6 +202,82 @@ function UploadData() {
     }
   }, [previewData, tableMode, columnMapping])
 
+  async function loadExistingTables({ silent = false } = {}) {
+    try {
+      setLoadingTables(true)
+      setTableLoadError('')
+
+      const result = await getTables()
+      const tables = Array.isArray(result?.tables) ? result.tables : []
+
+      setExistingTables(tables)
+
+      // Bila tabel yang sebelumnya dipilih sudah tidak ada,
+      // reset pilihan agar tidak menyimpan ke target yang salah.
+      setTableName((current) => {
+        if (tableMode !== 'existing') return current
+        if (!current) return current
+        return tables.includes(current) ? current : ''
+      })
+    } catch (error) {
+      console.error(error)
+      setExistingTables([])
+      setTableLoadError(
+        error.message || 'Gagal mengambil daftar tabel dari database.',
+      )
+
+      if (!silent) {
+        showMessage(
+          error.message || 'Gagal mengambil daftar tabel dari database.',
+          'warning',
+        )
+      }
+    } finally {
+      setLoadingTables(false)
+    }
+  }
+
+  async function loadBanks({ silent = false } = {}) {
+    try {
+      setLoadingBanks(true)
+      setBankLoadError('')
+
+      const result = await getBanks()
+      const bankList = Array.isArray(result?.banks) ? result.banks : []
+
+      setBanks(bankList)
+
+      setSelectedBankName((current) => {
+        if (!current) return current
+        return bankList.some((bank) => bank.bank_name === current)
+          ? current
+          : ''
+      })
+    } catch (error) {
+      console.error(error)
+      setBanks([])
+      setBankLoadError(
+        error.message || 'Gagal mengambil master bank.',
+      )
+
+      if (!silent) {
+        showMessage(
+          error.message || 'Gagal mengambil master bank.',
+          'warning',
+        )
+      }
+    } finally {
+      setLoadingBanks(false)
+    }
+  }
+
+  useEffect(() => {
+    loadExistingTables({ silent: true })
+    loadBanks({ silent: true })
+    // master tabel dan bank cukup dimuat saat halaman pertama kali dibuka
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   function showMessage(text, type = 'warning') {
     setMessage(text)
     setMessageType(type)
@@ -214,6 +299,8 @@ function UploadData() {
     try {
       setProcessing(true)
       setPreviewData(null)
+      setSaveResult(null)
+      setDuplicateWarning(null)
       setExcelSheets([])
       setSelectedSheet('')
       showMessage('', 'warning')
@@ -274,6 +361,11 @@ function UploadData() {
       return
     }
 
+    if (!selectedBankName) {
+      showMessage('Pilih nama bank terlebih dahulu.', 'warning')
+      return
+    }
+
     if (!selectedSheet) {
       showMessage('Pilih sheet Excel yang akan diproses.', 'warning')
       return
@@ -284,23 +376,36 @@ function UploadData() {
       return
     }
 
-    if (!headerRow || Number(headerRow) < 1) {
-      showMessage('Baris header minimal bernilai 1.', 'warning')
+    if (tableMode === 'new' && (!headerRow || Number(headerRow) < 1)) {
+      showMessage('Baris Header minimal bernilai 1.', 'warning')
+      return
+    }
+
+    if (
+      tableMode === 'existing' &&
+      (!firstDataRow || Number(firstDataRow) < 1)
+    ) {
+      showMessage('Baris Pertama Data minimal bernilai 1.', 'warning')
       return
     }
 
     try {
       setProcessing(true)
       setPreviewData(null)
+      setSaveResult(null)
+      setDuplicateWarning(null)
       showMessage('', 'warning')
 
       const result = await previewExcel({
         file,
+        tableMode,
         tableName: tableName.trim(),
+        bankName: selectedBankName,
         month: Number(month),
         year: Number(year),
         sheetName: selectedSheet,
         headerRow: Number(headerRow),
+        firstDataRow: Number(firstDataRow),
       })
 
       console.log('PREVIEW RESPONSE:', result)
@@ -345,6 +450,8 @@ function UploadData() {
     setSelectedRowIds([])
     setColumnMapping({})
     setCurrentPage(1)
+    setSaveResult(null)
+    setDuplicateWarning(null)
     showMessage('', 'warning')
 
     if (inputRef.current) {
@@ -410,6 +517,173 @@ function UploadData() {
       ...current,
       [originalColumn]: normalizeSqlIdentifier(current[originalColumn]),
     }))
+  }
+
+  function buildEffectiveColumnMapping() {
+    const effectiveColumnMapping = {}
+
+    if (tableMode === 'new') {
+      ;(previewData?.columns || []).forEach((column) => {
+        const mappedName = String(columnMapping[column] ?? column).trim()
+
+        if (['bank_id', 'bulan', 'tahun'].includes(String(column).toLowerCase())) {
+          return
+        }
+
+        if (mappedName && mappedName !== String(column)) {
+          effectiveColumnMapping[column] = mappedName
+        }
+      })
+    }
+
+    return effectiveColumnMapping
+  }
+
+  function validateBeforeSave() {
+    if (!previewData || !file) {
+      showMessage('Preview data belum tersedia.', 'warning')
+      return false
+    }
+
+    if (activePreviewRows.length === 0) {
+      showMessage('Tidak ada row yang dapat disimpan.', 'warning')
+      return false
+    }
+
+    if (tableMode === 'new' && !columnValidation.valid) {
+      showMessage(
+        'Masih terdapat nama kolom yang tidak valid. Perbaiki terlebih dahulu.',
+        'warning',
+      )
+      return false
+    }
+
+    return true
+  }
+
+  async function performDatabaseSave(duplicateAction = 'block') {
+    const effectiveColumnMapping = buildEffectiveColumnMapping()
+
+    try {
+      setSaving(true)
+      setSaveResult(null)
+      showMessage('', 'warning')
+
+      const result = await saveExcel({
+        file,
+        tableMode,
+        tableName: tableName.trim(),
+        bankName: selectedBankName,
+        month: Number(month),
+        year: Number(year),
+        sheetName: selectedSheet,
+        headerRow: Number(headerRow),
+        firstDataRow: Number(firstDataRow),
+        deletedRows: deletedRowIds,
+        columnMapping: effectiveColumnMapping,
+        duplicateAction,
+      })
+
+      setSaveResult(result)
+      setDuplicateWarning(null)
+
+      await loadExistingTables({ silent: true })
+
+      showMessage(
+        `${result.inserted_rows ?? activePreviewRows.length} row berhasil disimpan ke tabel ${result.table_name ?? tableName}.`,
+        'success',
+      )
+    } catch (error) {
+      console.error(error)
+      showMessage(
+        error.message || 'Gagal menyimpan data ke database.',
+        'warning',
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleSaveToDatabase() {
+    if (!validateBeforeSave()) return
+
+    if (tableMode === 'existing') {
+      try {
+        setSaving(true)
+        showMessage('', 'warning')
+
+        const periodResult = await checkPeriod({
+          tableName: tableName.trim(),
+          bankName: selectedBankName,
+          month: Number(month),
+          year: Number(year),
+        })
+
+        if (periodResult.exists) {
+          setDuplicateWarning(periodResult)
+          return
+        }
+      } catch (error) {
+        console.error(error)
+        showMessage(
+          error.message || 'Gagal memeriksa periode existing.',
+          'warning',
+        )
+        return
+      } finally {
+        setSaving(false)
+      }
+    }
+
+    const confirmationText = [
+      'Simpan data ke database?',
+      '',
+      `Tabel: ${tableName}`,
+      `Bank: ${selectedBankName}`,
+      `Mode: ${tableMode === 'new' ? 'Buat tabel baru' : 'Append ke tabel existing'}`,
+      `Periode: ${selectedMonthLabel} ${year}`,
+      `${
+        tableMode === 'new'
+          ? `Baris Header: ${headerRow}`
+          : `Baris Pertama Data: ${firstDataRow}`
+      }`,
+      `Data awal: ${previewData.row_count ?? previewData.preview?.length ?? 0} row`,
+      `Dihapus: ${deletedRowIds.length} row`,
+      `Akan disimpan: ${activePreviewRows.length} row`,
+    ].join('\n')
+
+    if (!window.confirm(confirmationText)) {
+      return
+    }
+
+    await performDatabaseSave('block')
+  }
+
+  async function handleDuplicateAction(action) {
+    if (action === 'cancel') {
+      setDuplicateWarning(null)
+      return
+    }
+
+    const actionLabel =
+      action === 'replace'
+        ? 'menghapus data periode lama dan menggantinya dengan data upload baru'
+        : 'menambahkan data upload baru tanpa menghapus data periode lama'
+
+    const confirmed = window.confirm(
+      `Anda akan ${actionLabel}.\n\n` +
+      `Tabel: ${tableName}\n` +
+      `Bank: ${duplicateWarning?.bank_name || selectedBankName}\n` +
+      `Periode: ${selectedMonthLabel} ${year}\n` +
+      `Data existing: ${duplicateWarning?.row_count ?? 0} row\n` +
+      `Data upload: ${activePreviewRows.length} row\n\n` +
+      'Lanjutkan?',
+    )
+
+    if (!confirmed) return
+
+    setDuplicateWarning(null)
+    await performDatabaseSave(action)
   }
 
   return (
@@ -566,9 +840,15 @@ function UploadData() {
                 <select
                   value={tableMode}
                   onChange={(event) => {
-                    setTableMode(event.target.value)
+                    const nextMode = event.target.value
+                    setTableMode(nextMode)
                     setTableName('')
                     setPreviewData(null)
+                    setSaveResult(null)
+
+                    if (nextMode === 'existing') {
+                      loadExistingTables({ silent: true })
+                    }
                   }}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
                 >
@@ -589,24 +869,51 @@ function UploadData() {
                 </label>
 
                 {tableMode === 'existing' ? (
-                  <select
-                    value={tableName}
-                    onChange={(event) => {
-                      setTableName(event.target.value)
-                      setPreviewData(null)
-                    }}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
-                  >
-                    <option value="">
-                      Pilih table...
-                    </option>
-
-                    {existingTables.map((table) => (
-                      <option key={table} value={table}>
-                        {table}
+                  <div className="space-y-2">
+                    <select
+                      value={tableName}
+                      onChange={(event) => {
+                        setTableName(event.target.value)
+                        setPreviewData(null)
+                        setSaveResult(null)
+                      }}
+                      disabled={loadingTables || existingTables.length === 0}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <option value="">
+                        {loadingTables
+                          ? 'Memuat tabel database...'
+                          : existingTables.length === 0
+                            ? 'Belum ada tabel di database'
+                            : 'Pilih table...'}
                       </option>
-                    ))}
-                  </select>
+
+                      {existingTables.map((table) => (
+                        <option key={table} value={table}>
+                          {table}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <p className={`text-[10px] ${
+                        tableLoadError ? 'font-semibold text-red-500' : 'text-slate-400'
+                      }`}>
+                        {tableLoadError
+                          ? tableLoadError
+                          : `${existingTables.length} tabel tersedia di PostgreSQL.`}
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() => loadExistingTables()}
+                        disabled={loadingTables}
+                        className="text-[10px] font-bold text-blue-600 hover:text-blue-700 disabled:opacity-40"
+                      >
+                        {loadingTables ? 'Memuat...' : 'Refresh'}
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <input
                     value={tableName}
@@ -625,11 +932,61 @@ function UploadData() {
           <section className="border-t border-slate-100 pt-5">
             <div className="mb-4">
               <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
-                3. Tentukan Periode Data
+                3. Tentukan Bank & Periode Data
               </h2>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-600">
+                  Nama Bank
+                </label>
+
+                <select
+                  value={selectedBankName}
+                  onChange={(event) => {
+                    setSelectedBankName(event.target.value)
+                    setPreviewData(null)
+                    setSaveResult(null)
+                  }}
+                  disabled={loadingBanks || banks.length === 0}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">
+                    {loadingBanks
+                      ? 'Memuat master bank...'
+                      : banks.length === 0
+                        ? 'Master bank belum tersedia'
+                        : 'Pilih bank...'}
+                  </option>
+
+                  {banks.map((bank) => (
+                    <option key={bank.bank_id} value={bank.bank_name}>
+                      {bank.bank_name}
+                    </option>
+                  ))}
+                </select>
+
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <p className={`text-[10px] ${
+                    bankLoadError ? 'font-semibold text-red-500' : 'text-slate-400'
+                  }`}>
+                    {bankLoadError
+                      ? bankLoadError
+                      : `${banks.length} bank tersedia.`}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => loadBanks()}
+                    disabled={loadingBanks}
+                    className="text-[10px] font-bold text-blue-600 hover:text-blue-700 disabled:opacity-40"
+                  >
+                    {loadingBanks ? 'Memuat...' : 'Refresh'}
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <label className="mb-1.5 flex items-center gap-2 text-xs font-bold text-slate-600">
                   <CalendarDays size={14} />
@@ -680,8 +1037,9 @@ function UploadData() {
               </h2>
 
               <p className="mt-1 text-xs text-slate-400">
-                Daftar sheet dibaca otomatis dari file Excel oleh backend.
-                Tentukan baris yang berisi nama kolom sebagai header.
+                {tableMode === 'new'
+                  ? 'Untuk tabel baru, tentukan baris yang berisi nama kolom sebagai header.'
+                  : 'Untuk tabel existing, cukup tentukan baris pertama data. Header preview akan mengikuti schema tabel yang sudah tersimpan.'}
               </p>
             </div>
 
@@ -696,6 +1054,8 @@ function UploadData() {
                   onChange={(event) => {
                     setSelectedSheet(event.target.value)
                     setPreviewData(null)
+                    setSaveResult(null)
+                    setDuplicateWarning(null)
                   }}
                   disabled={!file || excelSheets.length === 0 || processing}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
@@ -714,19 +1074,41 @@ function UploadData() {
 
               <div>
                 <label className="mb-1.5 block text-xs font-bold text-slate-600">
-                  Baris Header
+                  {tableMode === 'new' ? 'Baris Header' : 'Baris Pertama Data'}
                 </label>
 
-                <input
-                  type="number"
-                  min="1"
-                  value={headerRow}
-                  onChange={(event) => {
-                    setHeaderRow(Number(event.target.value))
-                    setPreviewData(null)
-                  }}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
-                />
+                {tableMode === 'new' ? (
+                  <input
+                    type="number"
+                    min="1"
+                    value={headerRow}
+                    onChange={(event) => {
+                      setHeaderRow(Number(event.target.value))
+                      setPreviewData(null)
+                      setSaveResult(null)
+                    }}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    min="1"
+                    value={firstDataRow}
+                    onChange={(event) => {
+                      setFirstDataRow(Number(event.target.value))
+                      setPreviewData(null)
+                      setSaveResult(null)
+                      setDuplicateWarning(null)
+                    }}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                  />
+                )}
+
+                <p className="mt-1.5 text-[10px] text-slate-400">
+                  {tableMode === 'new'
+                    ? 'Contoh: isi 17 jika nama kolom berada pada baris Excel ke-17.'
+                    : 'Contoh: isi 18 jika data pertama dimulai pada baris Excel ke-18. Nama kolom tidak dibaca dari file.'}
+                </p>
               </div>
             </div>
           </section>
@@ -736,11 +1118,18 @@ function UploadData() {
               Metadata Upload
             </h3>
 
-            <div className="mt-3 grid grid-cols-2 gap-3 text-xs md:grid-cols-5">
+            <div className="mt-3 grid grid-cols-2 gap-3 text-xs md:grid-cols-6">
               <div>
                 <p className="text-slate-400">Table</p>
                 <p className="mt-1 font-bold text-slate-800">
                   {tableName || '-'}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-slate-400">Bank</p>
+                <p className="mt-1 truncate font-bold text-slate-800">
+                  {selectedBankName || '-'}
                 </p>
               </div>
 
@@ -766,9 +1155,11 @@ function UploadData() {
               </div>
 
               <div>
-                <p className="text-slate-400">Header</p>
+                <p className="text-slate-400">
+                  {tableMode === 'new' ? 'Header' : 'Data Mulai'}
+                </p>
                 <p className="mt-1 font-bold text-slate-800">
-                  Baris {headerRow}
+                  Baris {tableMode === 'new' ? headerRow : firstDataRow}
                 </p>
               </div>
             </div>
@@ -829,7 +1220,7 @@ function UploadData() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 border-b border-slate-100 bg-slate-50/60 p-4 text-xs md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 border-b border-slate-100 bg-slate-50/60 p-4 text-xs md:grid-cols-5">
               <div>
                 <p className="text-slate-400">File</p>
                 <p className="mt-1 truncate font-bold text-slate-700">
@@ -841,6 +1232,14 @@ function UploadData() {
                 <p className="text-slate-400">Sheet</p>
                 <p className="mt-1 truncate font-bold text-slate-700">
                   {previewData.sheet_name || selectedSheet}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-slate-400">Bank</p>
+                <p className="mt-1 truncate font-bold text-slate-700">
+                  {previewData.bank_name || selectedBankName}
+                  {previewData.bank_id ? ` (${previewData.bank_id})` : ''}
                 </p>
               </div>
 
@@ -899,16 +1298,25 @@ function UploadData() {
                             value={columnMapping[column] ?? ''}
                             onChange={(event) => updateColumnName(column, event.target.value)}
                             onBlur={() => normalizeColumnName(column)}
-                            className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-xs font-bold outline-none ${
-                              columnValidation.errors[column]
-                                ? 'border-red-300 text-red-700 focus:border-red-500'
-                                : 'border-slate-200 text-slate-700 focus:border-blue-500'
+                            disabled={['bank_id', 'bulan', 'tahun'].includes(String(column).toLowerCase())}
+                            className={`mt-1 w-full rounded-lg border px-3 py-2 text-xs font-bold outline-none ${
+                              ['bank_id', 'bulan', 'tahun'].includes(String(column).toLowerCase())
+                                ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                                : columnValidation.errors[column]
+                                  ? 'border-red-300 bg-white text-red-700 focus:border-red-500'
+                                  : 'border-slate-200 bg-white text-slate-700 focus:border-blue-500'
                             }`}
                           />
-                          {columnValidation.errors[column] && (
-                            <p className="mt-1 text-[10px] font-semibold text-red-500">
-                              {columnValidation.errors[column]}
+                          {['bulan', 'tahun'].includes(String(column).toLowerCase()) ? (
+                            <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                              Kolom sistem periode.
                             </p>
+                          ) : (
+                            columnValidation.errors[column] && (
+                              <p className="mt-1 text-[10px] font-semibold text-red-500">
+                                {columnValidation.errors[column]}
+                              </p>
+                            )
                           )}
                         </div>
                       </div>
@@ -920,7 +1328,7 @@ function UploadData() {
 
             {tableMode === 'existing' && (
               <div className="border-b border-blue-100 bg-blue-50/40 px-5 py-3 text-xs text-blue-700">
-                Struktur kolom mengikuti schema tabel <strong>{tableName}</strong>. Rename kolom dilakukan melalui Table Explorer, bukan pada proses upload.
+                Header preview mengikuti schema tabel <strong>{tableName}</strong> yang sudah dikunci saat tabel pertama kali dibuat. Kolom sistem <strong>bank_id</strong>, <strong>bulan</strong>, dan <strong>tahun</strong> ditambahkan otomatis. Rename kolom existing dilakukan melalui Table Explorer.
               </div>
             )}
 
@@ -1079,11 +1487,207 @@ function UploadData() {
 
               <button
                 type="button"
-                disabled
-                className="rounded-xl bg-slate-200 px-5 py-2.5 text-xs font-bold text-slate-500"
+                onClick={handleSaveToDatabase}
+                disabled={
+                  saving ||
+                  activePreviewRows.length === 0 ||
+                  (tableMode === 'new' && !columnValidation.valid)
+                }
+                className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
               >
-                Simpan ke Database
+                {saving ? (
+                  <LoaderCircle size={15} className="animate-spin" />
+                ) : (
+                  <Save size={15} />
+                )}
+                {saving ? 'Menyimpan...' : 'Simpan ke Database'}
               </button>
+            </div>
+          </section>
+        )}
+
+        {duplicateWarning && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+            <div className="w-full max-w-lg rounded-2xl border border-amber-200 bg-white shadow-2xl">
+              <div className="border-b border-slate-100 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-amber-50 p-2.5 text-amber-600">
+                    <AlertCircle size={21} />
+                  </div>
+
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-600">
+                      Duplicate Period Detected
+                    </div>
+
+                    <h2 className="mt-1 text-base font-extrabold text-slate-800">
+                      Data Periode Sudah Tersedia
+                    </h2>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Tentukan tindakan sebelum data baru disimpan.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4 p-5">
+                <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 text-xs">
+                  <div>
+                    <p className="text-slate-400">Tabel</p>
+                    <p className="mt-1 font-bold text-slate-800">
+                      {duplicateWarning.table_name}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-400">Bank</p>
+                    <p className="mt-1 font-bold text-slate-800">
+                      {duplicateWarning.bank_name}
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-slate-400">
+                      {duplicateWarning.bank_id}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-400">Periode</p>
+                    <p className="mt-1 font-bold text-slate-800">
+                      {selectedMonthLabel} {duplicateWarning.year}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-400">Data Existing</p>
+                    <p className="mt-1 font-bold text-amber-700">
+                      {duplicateWarning.row_count} row
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-xs text-slate-600">
+                  <p>
+                    <strong>Ganti Data Periode</strong> akan menghapus seluruh data
+                    untuk bank dan periode tersebut, kemudian memasukkan data upload baru.
+                  </p>
+                  <p>
+                    <strong>Tetap Tambahkan</strong> akan mempertahankan data existing
+                    dan menambahkan data upload sebagai row baru.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col-reverse gap-2 border-t border-slate-100 p-4 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => handleDuplicateAction('cancel')}
+                  disabled={saving}
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Batal
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleDuplicateAction('append')}
+                  disabled={saving}
+                  className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                >
+                  Tetap Tambahkan
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleDuplicateAction('replace')}
+                  disabled={saving}
+                  className="rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-50"
+                >
+                  Ganti Data Periode
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {saveResult && (
+          <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-white p-2.5 text-emerald-600 shadow-sm">
+                <CheckCircle2 size={21} />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+                  Database Save Success
+                </div>
+
+                <h2 className="mt-1 text-base font-extrabold text-slate-800">
+                  Data Berhasil Disimpan
+                </h2>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  {saveResult.message || 'Data berhasil disimpan ke PostgreSQL.'}
+                </p>
+
+                <div className="mt-4 grid grid-cols-2 gap-3 text-xs md:grid-cols-7">
+                  <div>
+                    <p className="text-slate-400">Tabel</p>
+                    <p className="mt-1 font-bold text-slate-800">
+                      {saveResult.table_name || tableName}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-400">Bank</p>
+                    <p className="mt-1 truncate font-bold text-slate-800">
+                      {saveResult.bank_name || selectedBankName}
+                      {saveResult.bank_id ? ` (${saveResult.bank_id})` : ''}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-400">Mode</p>
+                    <p className="mt-1 font-bold text-slate-800">
+                      {saveResult.table_mode === 'new' ? 'New Table' : 'Existing'}
+                    </p>
+                    {saveResult.duplicate_action && (
+                      <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+                        {saveResult.duplicate_action === 'replace'
+                          ? `Replace ${saveResult.replaced_rows ?? 0} row lama`
+                          : 'Append ke periode existing'}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-slate-400">Periode</p>
+                    <p className="mt-1 font-bold text-slate-800">
+                      {selectedMonthLabel} {saveResult.year || year}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-400">Data Awal</p>
+                    <p className="mt-1 font-bold text-slate-800">
+                      {saveResult.original_rows ?? '-'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-400">Dihapus</p>
+                    <p className="mt-1 font-bold text-red-600">
+                      {saveResult.deleted_rows ?? 0}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-400">Disimpan</p>
+                    <p className="mt-1 font-bold text-emerald-700">
+                      {saveResult.inserted_rows ?? '-'}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
         )}
