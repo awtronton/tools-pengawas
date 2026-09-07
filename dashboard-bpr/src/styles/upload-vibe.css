@@ -119,7 +119,7 @@
 }
 
 .tp-upload-form select,
-.tp-upload-form input:not([type='checkbox']):not([type='file']) {
+.tp-upload-form .tp-native-control {
   min-height: 38px;
   border-color: #cfd3df !important;
   border-radius: 7px !important;
@@ -130,7 +130,7 @@
 }
 
 .tp-upload-form select:focus,
-.tp-upload-form input:not([type='checkbox']):not([type='file']):focus {
+.tp-upload-form .tp-native-control:focus {
   border-color: var(--primary-color, #0073ea) !important;
   box-shadow: 0 0 0 2px rgba(0, 115, 234, 0.08) !important;
 }
@@ -228,7 +228,7 @@
 }
 
 .tp-upload-form select,
-.tp-upload-form input:not([type='checkbox']):not([type='file']) {
+.tp-upload-form .tp-native-control {
   font-weight: 400 !important;
 }
 
@@ -254,7 +254,7 @@
    ========================================================= */
 
 .tp-upload-form select,
-.tp-upload-form input:not([type='checkbox']):not([type='file']) {
+.tp-upload-form .tp-native-control {
   box-sizing: border-box !important;
   height: 40px !important;
   min-height: 40px !important;
@@ -264,12 +264,66 @@
   vertical-align: middle;
 }
 
-.tp-upload-form input[type='number'] {
+.tp-upload-form .tp-native-control[type='number'] {
   appearance: textfield;
   -moz-appearance: textfield;
 }
 
-.tp-upload-form input[type='number']::-webkit-inner-spin-button,
-.tp-upload-form input[type='number']::-webkit-outer-spin-button {
+.tp-upload-form .tp-native-control[type='number']::-webkit-inner-spin-button,
+.tp-upload-form .tp-native-control[type='number']::-webkit-outer-spin-button {
   margin: 0;
 }
+
+
+/* Step 3B.1 — official Vibe NumberField */
+.tp-vibe-number-field {
+  width: 100%;
+}
+
+.tp-vibe-number-field,
+.tp-vibe-number-field > * {
+  max-width: none;
+}
+
+
+
+/* =========================================================
+   Step 3B.1.1 — NumberField typography normalization
+   Match Vibe NumberField text size with existing form controls.
+   ========================================================= */
+
+.tp-vibe-number-field input {
+  font-family: var(--tp-font-ui) !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  line-height: 1.2 !important;
+}
+
+.tp-vibe-number-field input::placeholder {
+  font-size: 12px !important;
+  font-weight: 400 !important;
+}
+
+
+/* =========================================================
+   Step 3B.2 — Vibe Dropdown
+   All primary select controls now use the same Vibe component family
+   as NumberField. Avoid manual font-weight normalization here.
+   ========================================================= */
+
+.tp-vibe-dropdown,
+.tp-vibe-number-field {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Keep field wrappers aligned in the grid. */
+.tp-vibe-dropdown > div,
+.tp-vibe-number-field > div {
+  width: 100%;
+}
+
+/*
+  Do not force font-weight on Vibe Dropdown/NumberField internals.
+  Their visual consistency now comes from @vibe/core itself.
+*/

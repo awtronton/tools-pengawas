@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Button } from '@vibe/core'
+import { Button, Dropdown, NumberField } from '@vibe/core'
 import {
   detectExcelSheets,
   previewExcel,
@@ -22,6 +22,8 @@ import {
   RotateCcw,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   PencilLine,
   Save,
 } from 'lucide-react'
@@ -45,6 +47,18 @@ const months = [
   { value: 12, label: 'Desember' },
 ]
 
+const DATA_START_YEAR = 2021
+
+const tableModeOptions = [
+  {
+    value: 'existing',
+    label: 'Pilih tabel yang sudah ada',
+  },
+  {
+    value: 'new',
+    label: 'Buat tabel baru',
+  },
+]
 
 function normalizePreviewResponse(result) {
   const rawRows =
@@ -150,6 +164,59 @@ function UploadData() {
 
   const selectedMonthLabel =
     months.find((item) => item.value === Number(month))?.label || '-'
+
+  const existingTableOptions = useMemo(
+    () =>
+      existingTables.map((table) => ({
+        value: table,
+        label: table,
+      })),
+    [existingTables],
+  )
+
+  const bankOptions = useMemo(
+    () =>
+      banks.map((bank) => ({
+        value: bank.bank_name,
+        label: bank.bank_name,
+      })),
+    [banks],
+  )
+
+  const monthOptions = useMemo(
+    () =>
+      months.map((item) => ({
+        value: item.value,
+        label: item.label,
+      })),
+    [],
+  )
+
+  const yearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear()
+    const endYear = Math.max(currentYear, DATA_START_YEAR)
+
+    return Array.from(
+      { length: endYear - DATA_START_YEAR + 1 },
+      (_, index) => {
+        const optionYear = DATA_START_YEAR + index
+
+        return {
+          value: optionYear,
+          label: String(optionYear),
+        }
+      },
+    )
+  }, [])
+
+  const sheetOptions = useMemo(
+    () =>
+      excelSheets.map((sheet) => ({
+        value: sheet,
+        label: sheet,
+      })),
+    [excelSheets],
+  )
 
 
   const activePreviewRows = useMemo(() => {
@@ -825,10 +892,15 @@ function UploadData() {
                   Mode Tabel
                 </label>
 
-                <select
-                  value={tableMode}
-                  onChange={(event) => {
-                    const nextMode = event.target.value
+                <Dropdown
+                  options={tableModeOptions}
+                  value={
+                    tableModeOptions.find(
+                      (option) => option.value === tableMode,
+                    ) || null
+                  }
+                  onChange={(option) => {
+                    const nextMode = option?.value || 'existing'
                     setTableMode(nextMode)
                     setTableName('')
                     setPreviewData(null)
@@ -838,50 +910,44 @@ function UploadData() {
                       loadExistingTables({ silent: true })
                     }
                   }}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
-                >
-                  <option value="existing">
-                    Pilih tabel yang sudah ada
-                  </option>
-
-                  <option value="new">
-                    Buat tabel baru
-                  </option>
-                </select>
+                  searchable={false}
+                  clearable={false}
+                  className="tp-vibe-dropdown"
+                />
               </div>
 
               <div className="lg:col-span-2">
                 <label className="mb-1.5 flex items-center gap-2 text-xs font-bold text-slate-600">
                   <Table2 size={14} />
-                  Nama Table
+                  Nama Tabel
                 </label>
 
                 {tableMode === 'existing' ? (
                   <div className="space-y-2">
-                    <select
-                      value={tableName}
-                      onChange={(event) => {
-                        setTableName(event.target.value)
+                    <Dropdown
+                      options={existingTableOptions}
+                      value={
+                        existingTableOptions.find(
+                          (option) => option.value === tableName,
+                        ) || null
+                      }
+                      onChange={(option) => {
+                        setTableName(option?.value || '')
                         setPreviewData(null)
                         setSaveResult(null)
                       }}
-                      disabled={loadingTables || existingTables.length === 0}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <option value="">
-                        {loadingTables
+                      placeholder={
+                        loadingTables
                           ? 'Memuat tabel database...'
                           : existingTables.length === 0
                             ? 'Belum ada tabel di database'
-                            : 'Pilih table...'}
-                      </option>
-
-                      {existingTables.map((table) => (
-                        <option key={table} value={table}>
-                          {table}
-                        </option>
-                      ))}
-                    </select>
+                            : 'Pilih tabel...'
+                      }
+                      disabled={loadingTables || existingTables.length === 0}
+                      searchable={false}
+                      clearable={false}
+                      className="tp-vibe-dropdown"
+                    />
 
                     <div className="flex items-center justify-between gap-3">
                       <p className={`text-[10px] ${
@@ -910,7 +976,7 @@ function UploadData() {
                       setPreviewData(null)
                     }}
                     placeholder="contoh: kredit_debitur"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                    className="tp-native-control w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:border-blue-500"
                   />
                 )}
               </div>
@@ -930,30 +996,30 @@ function UploadData() {
                   Nama Bank
                 </label>
 
-                <select
-                  value={selectedBankName}
-                  onChange={(event) => {
-                    setSelectedBankName(event.target.value)
+                <Dropdown
+                  options={bankOptions}
+                  value={
+                    bankOptions.find(
+                      (option) => option.value === selectedBankName,
+                    ) || null
+                  }
+                  onChange={(option) => {
+                    setSelectedBankName(option?.value || '')
                     setPreviewData(null)
                     setSaveResult(null)
                   }}
-                  disabled={loadingBanks || banks.length === 0}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="">
-                    {loadingBanks
+                  placeholder={
+                    loadingBanks
                       ? 'Memuat master bank...'
                       : banks.length === 0
                         ? 'Master bank belum tersedia'
-                        : 'Pilih bank...'}
-                  </option>
-
-                  {banks.map((bank) => (
-                    <option key={bank.bank_id} value={bank.bank_name}>
-                      {bank.bank_name}
-                    </option>
-                  ))}
-                </select>
+                        : 'Pilih bank...'
+                  }
+                  disabled={loadingBanks || banks.length === 0}
+                  searchable
+                  clearable={false}
+                  className="tp-vibe-dropdown"
+                />
 
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <p className={`text-[10px] ${
@@ -981,20 +1047,21 @@ function UploadData() {
                   Bulan
                 </label>
 
-                <select
-                  value={month}
-                  onChange={(event) => {
-                    setMonth(Number(event.target.value))
+                <Dropdown
+                  options={monthOptions}
+                  value={
+                    monthOptions.find(
+                      (option) => option.value === Number(month),
+                    ) || null
+                  }
+                  onChange={(option) => {
+                    setMonth(Number(option?.value || 1))
                     setPreviewData(null)
                   }}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
-                >
-                  {months.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
+                  searchable={false}
+                  clearable={false}
+                  className="tp-vibe-dropdown"
+                />
               </div>
 
               <div>
@@ -1002,17 +1069,24 @@ function UploadData() {
                   Tahun (YYYY)
                 </label>
 
-                <input
-                  type="number"
-                  value={year}
-                  onChange={(event) => {
-                    setYear(event.target.value)
+                <Dropdown
+                  options={yearOptions}
+                  value={
+                    yearOptions.find(
+                      (option) => option.value === Number(year),
+                    ) || null
+                  }
+                  onChange={(option) => {
+                    setYear(
+                      Number(
+                        option?.value ?? new Date().getFullYear(),
+                      ),
+                    )
                     setPreviewData(null)
                   }}
-                  placeholder="2026"
-                  min="2000"
-                  max="2100"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                  searchable={false}
+                  clearable={false}
+                  className="tp-vibe-dropdown"
                 />
               </div>
             </div>
@@ -1037,27 +1111,29 @@ function UploadData() {
                   Nama Sheet
                 </label>
 
-                <select
-                  value={selectedSheet}
-                  onChange={(event) => {
-                    setSelectedSheet(event.target.value)
+                <Dropdown
+                  options={sheetOptions}
+                  value={
+                    sheetOptions.find(
+                      (option) => option.value === selectedSheet,
+                    ) || null
+                  }
+                  onChange={(option) => {
+                    setSelectedSheet(option?.value || '')
                     setPreviewData(null)
                     setSaveResult(null)
                     setDuplicateWarning(null)
                   }}
+                  placeholder={
+                    excelSheets.length === 0
+                      ? 'Upload file terlebih dahulu'
+                      : 'Pilih sheet...'
+                  }
                   disabled={!file || excelSheets.length === 0 || processing}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {excelSheets.length === 0 ? (
-                    <option value="">Upload file terlebih dahulu</option>
-                  ) : (
-                    excelSheets.map((sheet) => (
-                      <option key={sheet} value={sheet}>
-                        {sheet}
-                      </option>
-                    ))
-                  )}
-                </select>
+                  searchable={false}
+                  clearable={false}
+                  className="tp-vibe-dropdown"
+                />
               </div>
 
               <div>
@@ -1066,29 +1142,33 @@ function UploadData() {
                 </label>
 
                 {tableMode === 'new' ? (
-                  <input
-                    type="number"
-                    min="1"
-                    value={headerRow}
-                    onChange={(event) => {
-                      setHeaderRow(Number(event.target.value))
+                  <NumberField
+                    value={Number(headerRow) || null}
+                    onChange={(value) => {
+                      setHeaderRow(value ?? 1)
                       setPreviewData(null)
                       setSaveResult(null)
                     }}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                    min={1}
+                    step={1}
+                    size="medium"
+                    className="tp-vibe-number-field"
+                    aria-label="Baris Header"
                   />
                 ) : (
-                  <input
-                    type="number"
-                    min="1"
-                    value={firstDataRow}
-                    onChange={(event) => {
-                      setFirstDataRow(Number(event.target.value))
+                  <NumberField
+                    value={Number(firstDataRow) || null}
+                    onChange={(value) => {
+                      setFirstDataRow(value ?? 1)
                       setPreviewData(null)
                       setSaveResult(null)
                       setDuplicateWarning(null)
                     }}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                    min={1}
+                    step={1}
+                    size="medium"
+                    className="tp-vibe-number-field"
+                    aria-label="Baris Pertama Data"
                   />
                 )}
 
@@ -1289,7 +1369,7 @@ function UploadData() {
                             onChange={(event) => updateColumnName(column, event.target.value)}
                             onBlur={() => normalizeColumnName(column)}
                             disabled={['bank_id', 'bulan', 'tahun'].includes(String(column).toLowerCase())}
-                            className={`mt-1 w-full rounded-lg border px-3 py-2 text-xs font-bold outline-none ${
+                            className={`tp-native-control mt-1 w-full rounded-lg border px-3 py-2 text-xs font-bold outline-none ${
                               ['bank_id', 'bulan', 'tahun'].includes(String(column).toLowerCase())
                                 ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
                                 : columnValidation.errors[column]
@@ -1439,14 +1519,27 @@ function UploadData() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage <= 1}
+                  className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Ke halaman pertama"
+                  title="Halaman pertama"
+                >
+                  <ChevronsLeft size={15} />
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
                   disabled={currentPage <= 1}
                   className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Ke halaman sebelumnya"
+                  title="Halaman sebelumnya"
                 >
                   <ChevronLeft size={15} />
                 </button>
 
-                <span className="min-w-20 text-center text-[11px] font-bold text-slate-600">
+                <span className="min-w-20 text-center text-[11px] font-medium text-slate-600">
                   {currentPage} / {totalPages}
                 </span>
 
@@ -1455,8 +1548,21 @@ function UploadData() {
                   onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
                   disabled={currentPage >= totalPages}
                   className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Ke halaman berikutnya"
+                  title="Halaman berikutnya"
                 >
                   <ChevronRight size={15} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage >= totalPages}
+                  className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Ke halaman terakhir"
+                  title="Halaman terakhir"
+                >
+                  <ChevronsRight size={15} />
                 </button>
               </div>
             </div>
