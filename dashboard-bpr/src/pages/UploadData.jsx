@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Button } from '@vibe/core'
 import {
   detectExcelSheets,
   previewExcel,
@@ -26,6 +27,8 @@ import {
 } from 'lucide-react'
 
 import DashboardLayout from '../layouts/DashboardLayout'
+import WorkspacePageHeader from '../components/ui/WorkspacePageHeader'
+import '../styles/upload-vibe.css'
 
 const months = [
   { value: 1, label: 'Januari' },
@@ -688,29 +691,14 @@ function UploadData() {
 
   return (
     <DashboardLayout>
-      <main className="mx-auto w-full max-w-6xl space-y-6">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
-              <Database size={21} />
-            </div>
-
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-600">
-                Data Warehouse
-              </div>
-
-              <h1 className="mt-1 text-lg font-extrabold text-slate-800">
-                Upload Data Terstruktur
-              </h1>
-
-              <p className="mt-1 text-xs text-slate-400">
-                Unggah file XLS/XLSX, tentukan tabel tujuan dan periode data,
-                lalu sistem akan membersihkan struktur menjadi SQL-ready.
-              </p>
-            </div>
-          </div>
-        </div>
+      <main className="tp-upload-page mx-auto w-full max-w-[1480px] space-y-5">
+        <WorkspacePageHeader
+          eyebrow="Data Warehouse"
+          title="Upload Data"
+          description="Tambahkan data XLS/XLSX ke warehouse, tentukan bank dan periode, lalu validasi hasil cleaning sebelum disimpan ke PostgreSQL."
+          icon={Database}
+          badge="Upload Workspace"
+        />
 
         {message && (
           <div
@@ -732,12 +720,12 @@ function UploadData() {
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+          className="tp-upload-form space-y-6 rounded-xl border border-slate-200 bg-white p-6"
         >
           <section>
             <div className="mb-3">
-              <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
-                1. Pilih File Excel
+              <h2 className="text-[13px] font-medium text-slate-800">
+                1. Pilih file Excel
               </h2>
 
               <p className="mt-1 text-xs text-slate-400">
@@ -756,7 +744,7 @@ function UploadData() {
                 onClick={() => {
                   if (!processing) inputRef.current?.click()
                 }}
-                className={`cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition ${
+                className={`tp-upload-dropzone cursor-pointer rounded-xl border border-dashed p-10 text-center transition ${
                   dragging
                     ? 'border-blue-500 bg-blue-50'
                     : 'border-slate-300 bg-slate-50 hover:border-blue-400 hover:bg-blue-50/50'
@@ -791,7 +779,7 @@ function UploadData() {
                 </p>
               </div>
             ) : (
-              <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <div className="tp-upload-selected-file flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                 <div className="flex items-center gap-3">
                   <div className="rounded-xl bg-white p-2 text-emerald-600">
                     <FileSpreadsheet size={22} />
@@ -826,8 +814,8 @@ function UploadData() {
 
           <section className="border-t border-slate-100 pt-5">
             <div className="mb-4">
-              <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
-                2. Tentukan Tabel Tujuan
+              <h2 className="text-[13px] font-medium text-slate-800">
+                2. Tentukan tabel tujuan
               </h2>
             </div>
 
@@ -931,8 +919,8 @@ function UploadData() {
 
           <section className="border-t border-slate-100 pt-5">
             <div className="mb-4">
-              <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
-                3. Tentukan Bank & Periode Data
+              <h2 className="text-[13px] font-medium text-slate-800">
+                3. Tentukan bank & periode data
               </h2>
             </div>
 
@@ -1032,7 +1020,7 @@ function UploadData() {
 
           <section className="border-t border-slate-100 pt-5">
             <div className="mb-4">
-              <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
+              <h2 className="text-[13px] font-medium text-slate-800">
                 4. Struktur Excel
               </h2>
 
@@ -1113,8 +1101,8 @@ function UploadData() {
             </div>
           </section>
 
-          <section className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
-            <h3 className="text-[10px] font-bold uppercase tracking-wider text-blue-700">
+          <section className="tp-upload-metadata rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+            <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-blue-700">
               Metadata Upload
             </h3>
 
@@ -1166,28 +1154,30 @@ function UploadData() {
           </section>
 
           <div className="flex justify-end">
-            <button
+            <Button
               type="submit"
               disabled={processing}
-              className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="tp-vibe-primary-action"
             >
-              {processing ? (
-                <LoaderCircle size={16} className="animate-spin" />
-              ) : (
-                <UploadCloud size={16} />
-              )}
+              <span className="flex items-center gap-2">
+                {processing ? (
+                  <LoaderCircle size={16} className="animate-spin" />
+                ) : (
+                  <UploadCloud size={16} />
+                )}
 
-              {processing ? 'Memproses...' : 'Proses & Preview Data'}
-            </button>
+                {processing ? 'Memproses...' : 'Proses & Preview Data'}
+              </span>
+            </Button>
           </div>
         </form>
 
         {previewData && (
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <section className="tp-upload-preview overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 p-5">
               <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
                 <div>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-600">
+                  <div className="text-[10px] font-medium uppercase tracking-[0.10em] text-emerald-600">
                     SQL-Ready Preview
                   </div>
 
@@ -1265,7 +1255,7 @@ function UploadData() {
                     <PencilLine size={16} />
                   </div>
                   <div>
-                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
+                    <h3 className="text-[13px] font-medium text-slate-800">
                       Struktur Kolom Tabel Baru
                     </h3>
                     <p className="mt-1 text-xs text-slate-400">
@@ -1282,7 +1272,7 @@ function UploadData() {
                     >
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:items-start">
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          <p className="text-[10px] font-medium uppercase tracking-[0.06em] text-slate-400">
                             Original
                           </p>
                           <p className="mt-1 truncate text-xs font-bold text-slate-700">
@@ -1291,7 +1281,7 @@ function UploadData() {
                         </div>
 
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          <p className="text-[10px] font-medium uppercase tracking-[0.06em] text-slate-400">
                             Nama Kolom Database
                           </p>
                           <input
@@ -1485,7 +1475,7 @@ function UploadData() {
                 </p>
               </div>
 
-              <button
+              <Button
                 type="button"
                 onClick={handleSaveToDatabase}
                 disabled={
@@ -1493,22 +1483,24 @@ function UploadData() {
                   activePreviewRows.length === 0 ||
                   (tableMode === 'new' && !columnValidation.valid)
                 }
-                className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
+                className="tp-vibe-primary-action"
               >
-                {saving ? (
-                  <LoaderCircle size={15} className="animate-spin" />
-                ) : (
-                  <Save size={15} />
-                )}
-                {saving ? 'Menyimpan...' : 'Simpan ke Database'}
-              </button>
+                <span className="flex items-center gap-2">
+                  {saving ? (
+                    <LoaderCircle size={15} className="animate-spin" />
+                  ) : (
+                    <Save size={15} />
+                  )}
+                  {saving ? 'Menyimpan...' : 'Simpan ke Database'}
+                </span>
+              </Button>
             </div>
           </section>
         )}
 
         {duplicateWarning && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-            <div className="w-full max-w-lg rounded-2xl border border-amber-200 bg-white shadow-2xl">
+            <div className="tp-upload-modal w-full max-w-lg rounded-xl border border-amber-200 bg-white shadow-2xl">
               <div className="border-b border-slate-100 p-5">
                 <div className="flex items-start gap-3">
                   <div className="rounded-xl bg-amber-50 p-2.5 text-amber-600">
@@ -1516,7 +1508,7 @@ function UploadData() {
                   </div>
 
                   <div>
-                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-600">
+                    <div className="text-[10px] font-medium uppercase tracking-[0.10em] text-amber-600">
                       Duplicate Period Detected
                     </div>
 
@@ -1610,14 +1602,14 @@ function UploadData() {
         )}
 
         {saveResult && (
-          <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+          <section className="tp-upload-success rounded-xl border border-emerald-200 bg-emerald-50 p-5">
             <div className="flex items-start gap-3">
               <div className="rounded-xl bg-white p-2.5 text-emerald-600 shadow-sm">
                 <CheckCircle2 size={21} />
               </div>
 
               <div className="min-w-0 flex-1">
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+                <div className="text-[10px] font-medium uppercase tracking-[0.10em] text-emerald-700">
                   Database Save Success
                 </div>
 

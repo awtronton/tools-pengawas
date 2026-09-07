@@ -1,0 +1,92 @@
+/* =========================================================
+   Tools Pengawas — Product Typography
+   Figtree 400/500/600 only.
+   Avoids the heavy 700/800 feel from the original dashboard.
+   ========================================================= */
+
+:root {
+  --tp-font-ui:
+    'Figtree',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+
+  --tp-weight-regular: 400;
+  --tp-weight-medium: 500;
+  --tp-weight-semibold: 600;
+}
+
+html,
+body,
+#root {
+  font-family: var(--tp-font-ui);
+  font-weight: var(--tp-weight-regular);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+/* Shell typography */
+.vibe-shell {
+  font-family: var(--tp-font-ui);
+}
+
+.vibe-shell-brand-title {
+  font-weight: 600 !important;
+}
+
+.vibe-shell-brand-subtitle,
+.vibe-shell-breadcrumb,
+.vibe-shell-search input {
+  font-weight: 400 !important;
+}
+
+.vibe-shell-workspace-switcher .font-semibold {
+  font-weight: 500 !important;
+}
+
+.vibe-shell-nav-label {
+  font-weight: 600 !important;
+  letter-spacing: 0.055em !important;
+}
+
+.vibe-shell-nav-item {
+  font-weight: 400 !important;
+}
+
+.vibe-shell-nav-item--active {
+  font-weight: 500 !important;
+}
+
+.vibe-shell-user .font-semibold {
+  font-weight: 500 !important;
+}
+
+/* Existing legacy pages: keep hierarchy but remove "black" typography. */
+.vibe-shell-content .font-extrabold {
+  font-weight: 600 !important;
+}
+
+.vibe-shell-content .font-bold {
+  font-weight: 600 !important;
+}
+
+.vibe-shell-content .font-semibold {
+  font-weight: 500 !important;
+}
+
+/*
+  Tailwind's uppercase utility is intentionally left functional globally.
+  Upload Data section headings are changed explicitly to sentence case.
+*/
