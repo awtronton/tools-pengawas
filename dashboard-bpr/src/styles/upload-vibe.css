@@ -244,3 +244,32 @@
 .tp-upload-page strong {
   font-weight: 600;
 }
+
+
+/* =========================================================
+   Form control height normalization
+   Native <select> and <input type="number"> render with
+   slightly different intrinsic metrics in Safari/Chromium.
+   Force a single Vibe-like control height.
+   ========================================================= */
+
+.tp-upload-form select,
+.tp-upload-form input:not([type='checkbox']):not([type='file']) {
+  box-sizing: border-box !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  line-height: 1.2 !important;
+  vertical-align: middle;
+}
+
+.tp-upload-form input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.tp-upload-form input[type='number']::-webkit-inner-spin-button,
+.tp-upload-form input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+}
