@@ -4,6 +4,7 @@ import pandas as pd
 from sqlalchemy import (
     Boolean,
     Column,
+    DateTime,
     Integer,
     MetaData,
     String,
@@ -24,10 +25,18 @@ from database.connection import engine
 SYSTEM_COLUMNS = {"bank_id", "bulan", "tahun"}
 SCHEMA_MAPPING_TABLE_NAME = "warehouse_schema_mapping"
 COLUMN_SETTINGS_TABLE_NAME = "warehouse_column_settings"
+RELATIONSHIPS_TABLE_NAME = "warehouse_table_relationships"
 MASK_VALUE = "••••••••"
+RELATIONSHIP_CARDINALITIES = {
+    "one_to_one",
+    "one_to_many",
+    "many_to_one",
+    "many_to_many",
+}
 INTERNAL_TABLES = {
     SCHEMA_MAPPING_TABLE_NAME,
     COLUMN_SETTINGS_TABLE_NAME,
+    RELATIONSHIPS_TABLE_NAME,
 }
 
 
@@ -72,12 +81,45 @@ column_settings_table = Table(
 )
 
 
+relationships_table = Table(
+    RELATIONSHIPS_TABLE_NAME,
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("relationship_name", String(180), nullable=False),
+    Column("source_table", String(63), nullable=False),
+    Column("source_column", String(63), nullable=False),
+    Column("target_table", String(63), nullable=False),
+    Column("target_column", String(63), nullable=False),
+    Column("cardinality", String(32), nullable=False),
+    Column(
+        "is_active",
+        Boolean,
+        nullable=False,
+        default=True,
+    ),
+    Column(
+        "created_at",
+        DateTime,
+        nullable=False,
+        server_default=func.now(),
+    ),
+    Column(
+        "updated_at",
+        DateTime,
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    ),
+)
+
+
 def ensure_internal_tables():
     metadata.create_all(
         engine,
         tables=[
             schema_mapping_table,
             column_settings_table,
+            relationships_table,
         ],
     )
 
@@ -897,10 +939,558 @@ def rename_table_column(
             )
         )
 
+        connection.execute(
+            relationships_table.update()
+            .where(
+                relationships_table.c.source_table
+                == table_name,
+                relationships_table.c.source_column
+                == old_name,
+            )
+            .values(
+                source_column=new_name,
+                updated_at=func.now(),
+            )
+        )
+
+        connection.execute(
+            relationships_table.update()
+            .where(
+                relationships_table.c.target_table
+                == table_name,
+                relationships_table.c.target_column
+                == old_name,
+            )
+            .values(
+                target_column=new_name,
+                updated_at=func.now(),
+            )
+        )
+
     return {
         "table_name": table_name,
         "old_name": old_name,
         "new_name": new_name,
+    }
+
+
+# =====================================================
+# TABLE RELATIONSHIPS
+# =====================================================
+
+def _get_column_metadata(
+    table_name: str,
+    column_name: str,
+):
+    table_name = validate_table_name(table_name)
+    column_name = validate_column_name(
+        column_name
+    )
+
+    inspector = inspect(engine)
+
+    if not inspector.has_table(table_name):
+        raise ValueError(
+            f"Tabel '{table_name}' tidak ditemukan."
+        )
+
+    for column in inspector.get_columns(
+        table_name
+    ):
+        if column["name"] == column_name:
+            return {
+                "column_name": column_name,
+                "data_type": str(
+                    column["type"]
+                ),
+                "nullable": bool(
+                    column.get(
+                        "nullable",
+                        True,
+                    )
+                ),
+            }
+
+    raise ValueError(
+        f"Kolom '{column_name}' tidak ditemukan "
+        f"pada tabel '{table_name}'."
+    )
+
+
+def _relationship_type_family(
+    data_type: str,
+):
+    value = str(data_type or "").upper()
+
+    if any(
+        token in value
+        for token in (
+            "SMALLINT",
+            "INTEGER",
+            "BIGINT",
+            "NUMERIC",
+            "DECIMAL",
+            "REAL",
+            "FLOAT",
+            "DOUBLE",
+        )
+    ):
+        return "numeric"
+
+    if any(
+        token in value
+        for token in (
+            "CHAR",
+            "TEXT",
+            "STRING",
+            "VARCHAR",
+        )
+    ):
+        return "text"
+
+    if "TIMESTAMP" in value:
+        return "timestamp"
+
+    if value.startswith("DATE"):
+        return "date"
+
+    if "BOOL" in value:
+        return "boolean"
+
+    return value or "unknown"
+
+
+def _relationship_compatibility(
+    source_type: str,
+    target_type: str,
+):
+    source_family = _relationship_type_family(
+        source_type
+    )
+    target_family = _relationship_type_family(
+        target_type
+    )
+
+    compatible = (
+        source_family == target_family
+    )
+
+    return {
+        "compatible": compatible,
+        "source_family": source_family,
+        "target_family": target_family,
+        "message": (
+            None
+            if compatible
+            else (
+                "Datatype kedua kolom berbeda. "
+                "Relasi tetap dapat disimpan sebagai "
+                "metadata, tetapi Visual SQL Builder "
+                "mungkin memerlukan casting."
+            )
+        ),
+    }
+
+
+def _serialize_relationship(row):
+    if not row:
+        return None
+
+    source_meta = _get_column_metadata(
+        row["source_table"],
+        row["source_column"],
+    )
+    target_meta = _get_column_metadata(
+        row["target_table"],
+        row["target_column"],
+    )
+
+    compatibility = (
+        _relationship_compatibility(
+            source_meta["data_type"],
+            target_meta["data_type"],
+        )
+    )
+
+    source_masked = (
+        row["source_column"]
+        in get_masked_columns(
+            row["source_table"]
+        )
+    )
+    target_masked = (
+        row["target_column"]
+        in get_masked_columns(
+            row["target_table"]
+        )
+    )
+
+    return {
+        "id": int(row["id"]),
+        "relationship_name":
+            row["relationship_name"],
+        "source_table":
+            row["source_table"],
+        "source_column":
+            row["source_column"],
+        "source_data_type":
+            source_meta["data_type"],
+        "source_masked":
+            source_masked,
+        "target_table":
+            row["target_table"],
+        "target_column":
+            row["target_column"],
+        "target_data_type":
+            target_meta["data_type"],
+        "target_masked":
+            target_masked,
+        "cardinality":
+            row["cardinality"],
+        "is_active":
+            bool(row["is_active"]),
+        "compatible":
+            compatibility["compatible"],
+        "compatibility_message":
+            compatibility["message"],
+        "created_at":
+            row["created_at"],
+        "updated_at":
+            row["updated_at"],
+    }
+
+
+def get_table_relationships(
+    table_name: str | None = None,
+):
+    ensure_internal_tables()
+
+    statement = select(
+        relationships_table
+    )
+
+    if table_name:
+        table_name = validate_table_name(
+            table_name
+        )
+        statement = statement.where(
+            or_(
+                relationships_table.c.source_table
+                == table_name,
+                relationships_table.c.target_table
+                == table_name,
+            )
+        )
+
+    statement = statement.order_by(
+        relationships_table.c.id
+    )
+
+    with engine.connect() as connection:
+        rows = connection.execute(
+            statement
+        ).mappings().all()
+
+    relationships = []
+
+    for row in rows:
+        try:
+            relationships.append(
+                _serialize_relationship(row)
+            )
+        except ValueError:
+            # Metadata relasi lama yang sudah tidak
+            # memiliki table/column valid tetap
+            # diabaikan dari UI sampai dibersihkan.
+            continue
+
+    return relationships
+
+
+def create_table_relationship(
+    *,
+    relationship_name: str | None,
+    source_table: str,
+    source_column: str,
+    target_table: str,
+    target_column: str,
+    cardinality: str,
+):
+    source_table = validate_table_name(
+        source_table
+    )
+    source_column = validate_column_name(
+        source_column
+    )
+    target_table = validate_table_name(
+        target_table
+    )
+    target_column = validate_column_name(
+        target_column
+    )
+    cardinality = str(
+        cardinality or ""
+    ).strip()
+
+    if cardinality not in (
+        RELATIONSHIP_CARDINALITIES
+    ):
+        raise ValueError(
+            "Cardinality tidak valid."
+        )
+
+    if (
+        source_table == target_table
+        and source_column == target_column
+    ):
+        raise ValueError(
+            "Source dan target tidak boleh "
+            "merupakan kolom yang sama."
+        )
+
+    source_meta = _get_column_metadata(
+        source_table,
+        source_column,
+    )
+    target_meta = _get_column_metadata(
+        target_table,
+        target_column,
+    )
+
+    name = str(
+        relationship_name or ""
+    ).strip()
+
+    if not name:
+        name = (
+            f"{source_table}.{source_column} "
+            f"↔ "
+            f"{target_table}.{target_column}"
+        )
+
+    if len(name) > 180:
+        raise ValueError(
+            "Nama relationship maksimal "
+            "180 karakter."
+        )
+
+    ensure_internal_tables()
+
+    with engine.begin() as connection:
+        existing_rows = connection.execute(
+            select(
+                relationships_table
+            ).where(
+                relationships_table.c.is_active
+                .is_(True)
+            )
+        ).mappings().all()
+
+        for row in existing_rows:
+            same_direction = (
+                row["source_table"]
+                == source_table
+                and row["source_column"]
+                == source_column
+                and row["target_table"]
+                == target_table
+                and row["target_column"]
+                == target_column
+            )
+
+            reverse_direction = (
+                row["source_table"]
+                == target_table
+                and row["source_column"]
+                == target_column
+                and row["target_table"]
+                == source_table
+                and row["target_column"]
+                == source_column
+            )
+
+            if (
+                same_direction
+                or reverse_direction
+            ):
+                raise ValueError(
+                    "Relationship untuk pasangan "
+                    "kolom tersebut sudah tersedia."
+                )
+
+        result = connection.execute(
+            relationships_table.insert().values(
+                relationship_name=name,
+                source_table=source_table,
+                source_column=source_column,
+                target_table=target_table,
+                target_column=target_column,
+                cardinality=cardinality,
+                is_active=True,
+            )
+        )
+
+        relationship_id = int(
+            result.inserted_primary_key[0]
+        )
+
+        row = connection.execute(
+            select(
+                relationships_table
+            ).where(
+                relationships_table.c.id
+                == relationship_id
+            )
+        ).mappings().one()
+
+    serialized = _serialize_relationship(
+        row
+    )
+
+    compatibility = (
+        _relationship_compatibility(
+            source_meta["data_type"],
+            target_meta["data_type"],
+        )
+    )
+
+    serialized["compatibility_message"] = (
+        compatibility["message"]
+    )
+
+    return serialized
+
+
+def update_table_relationship(
+    relationship_id: int,
+    *,
+    relationship_name: str | None = None,
+    cardinality: str | None = None,
+    is_active: bool | None = None,
+):
+    ensure_internal_tables()
+
+    relationship_id = int(
+        relationship_id
+    )
+
+    with engine.begin() as connection:
+        current = connection.execute(
+            select(
+                relationships_table
+            ).where(
+                relationships_table.c.id
+                == relationship_id
+            )
+        ).mappings().one_or_none()
+
+        if current is None:
+            raise ValueError(
+                "Relationship tidak ditemukan."
+            )
+
+        values = {
+            "updated_at": func.now(),
+        }
+
+        if relationship_name is not None:
+            name = str(
+                relationship_name
+            ).strip()
+
+            if not name:
+                raise ValueError(
+                    "Nama relationship tidak "
+                    "boleh kosong."
+                )
+
+            if len(name) > 180:
+                raise ValueError(
+                    "Nama relationship maksimal "
+                    "180 karakter."
+                )
+
+            values["relationship_name"] = (
+                name
+            )
+
+        if cardinality is not None:
+            cardinality = str(
+                cardinality
+            ).strip()
+
+            if cardinality not in (
+                RELATIONSHIP_CARDINALITIES
+            ):
+                raise ValueError(
+                    "Cardinality tidak valid."
+                )
+
+            values["cardinality"] = (
+                cardinality
+            )
+
+        if is_active is not None:
+            values["is_active"] = bool(
+                is_active
+            )
+
+        connection.execute(
+            relationships_table.update()
+            .where(
+                relationships_table.c.id
+                == relationship_id
+            )
+            .values(**values)
+        )
+
+        row = connection.execute(
+            select(
+                relationships_table
+            ).where(
+                relationships_table.c.id
+                == relationship_id
+            )
+        ).mappings().one()
+
+    return _serialize_relationship(row)
+
+
+def delete_table_relationship(
+    relationship_id: int,
+):
+    ensure_internal_tables()
+
+    relationship_id = int(
+        relationship_id
+    )
+
+    with engine.begin() as connection:
+        current = connection.execute(
+            select(
+                relationships_table
+            ).where(
+                relationships_table.c.id
+                == relationship_id
+            )
+        ).mappings().one_or_none()
+
+        if current is None:
+            raise ValueError(
+                "Relationship tidak ditemukan."
+            )
+
+        connection.execute(
+            relationships_table.delete()
+            .where(
+                relationships_table.c.id
+                == relationship_id
+            )
+        )
+
+    return {
+        "id": relationship_id,
+        "deleted": True,
     }
 
 

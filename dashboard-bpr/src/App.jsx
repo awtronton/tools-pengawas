@@ -14,6 +14,7 @@ import Dokumen from './pages/Dokumen'
 import UploadData from './pages/UploadData'
 import DataTables from './pages/DataTables'
 import TableExplorer from './pages/TableExplorer'
+import SchemaManager from './pages/SchemaManager'
 import PlaceholderPage from './components/ui/PlaceholderPage'
 
 function App() {
@@ -48,13 +49,7 @@ function App() {
 
         <Route
           path="/schema"
-          element={
-            <PlaceholderPage
-              title="Schema Manager"
-              description="Pengelolaan struktur, mapping, dan perubahan schema tabel akan tersedia di sini."
-              module="Data Warehouse"
-            />
-          }
+          element={<SchemaManager />}
         />
 
         <Route

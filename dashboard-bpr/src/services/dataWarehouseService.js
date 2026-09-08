@@ -280,3 +280,65 @@ export async function setTableColumnMasking({
     "Gagal memperbarui masking kolom"
   );
 }
+
+
+export async function getTableRelationships(tableName = "") {
+  const params = new URLSearchParams();
+
+  if (tableName) {
+    params.set("table_name", tableName);
+  }
+
+  const suffix = params.toString()
+    ? `?${params.toString()}`
+    : "";
+
+  return requestJson(
+    `${API_URL}/relationships${suffix}`,
+    {
+      method: "GET",
+    },
+    "Gagal membaca relationship"
+  );
+}
+
+export async function createTableRelationship(payload) {
+  return requestJson(
+    `${API_URL}/relationships`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+    "Gagal membuat relationship"
+  );
+}
+
+export async function updateTableRelationship(
+  relationshipId,
+  payload
+) {
+  return requestJson(
+    `${API_URL}/relationships/${relationshipId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+    "Gagal memperbarui relationship"
+  );
+}
+
+export async function deleteTableRelationship(relationshipId) {
+  return requestJson(
+    `${API_URL}/relationships/${relationshipId}`,
+    {
+      method: "DELETE",
+    },
+    "Gagal menghapus relationship"
+  );
+}

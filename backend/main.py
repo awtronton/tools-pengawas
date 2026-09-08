@@ -10,15 +10,19 @@ from database.table_service import (
     append_existing_table,
     count_period_rows,
     create_new_table,
+    create_table_relationship,
+    delete_table_relationship,
     get_all_tables,
     get_all_table_summaries,
     get_schema_mapping,
     get_table_column_details,
     get_table_explorer_options,
+    get_table_relationships,
     get_table_summary,
     explore_table_data,
     rename_table_column,
     set_column_masking,
+    update_table_relationship,
     replace_period_data,
     require_schema_mapping,
 )
@@ -69,6 +73,22 @@ class RenameColumnRequest(BaseModel):
 class ColumnMaskingRequest(BaseModel):
     column_name: str
     masked: bool
+
+
+
+class RelationshipCreateRequest(BaseModel):
+    relationship_name: str | None = None
+    source_table: str
+    source_column: str
+    target_table: str
+    target_column: str
+    cardinality: str
+
+
+class RelationshipUpdateRequest(BaseModel):
+    relationship_name: str | None = None
+    cardinality: str | None = None
+    is_active: bool | None = None
 
 
 def dataframe_to_records(df):
@@ -393,6 +413,135 @@ def update_column_masking(
     except Exception as error:
         print(
             "ERROR PATCH /tables/{table_name}/column-masking:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.get("/relationships")
+def relationships(
+    table_name: str | None = Query(None),
+):
+    try:
+        rows = get_table_relationships(
+            table_name=table_name
+        )
+
+        return {
+            "status": "success",
+            "count": len(rows),
+            "relationships": rows,
+        }
+
+    except Exception as error:
+        print(
+            "ERROR GET /relationships:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.post("/relationships")
+def create_relationship(
+    payload: RelationshipCreateRequest,
+):
+    try:
+        result = create_table_relationship(
+            relationship_name=(
+                payload.relationship_name
+            ),
+            source_table=payload.source_table,
+            source_column=payload.source_column,
+            target_table=payload.target_table,
+            target_column=payload.target_column,
+            cardinality=payload.cardinality,
+        )
+
+        return {
+            "status": "success",
+            "message": (
+                "Relationship berhasil dibuat."
+            ),
+            "relationship": result,
+        }
+
+    except Exception as error:
+        print(
+            "ERROR POST /relationships:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.patch("/relationships/{relationship_id}")
+def update_relationship(
+    relationship_id: int,
+    payload: RelationshipUpdateRequest,
+):
+    try:
+        result = update_table_relationship(
+            relationship_id,
+            relationship_name=(
+                payload.relationship_name
+            ),
+            cardinality=(
+                payload.cardinality
+            ),
+            is_active=payload.is_active,
+        )
+
+        return {
+            "status": "success",
+            "message": (
+                "Relationship berhasil diperbarui."
+            ),
+            "relationship": result,
+        }
+
+    except Exception as error:
+        print(
+            "ERROR PATCH /relationships/{relationship_id}:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.delete("/relationships/{relationship_id}")
+def delete_relationship(
+    relationship_id: int,
+):
+    try:
+        result = delete_table_relationship(
+            relationship_id
+        )
+
+        return {
+            "status": "success",
+            "message": (
+                "Relationship berhasil dihapus."
+            ),
+            **result,
+        }
+
+    except Exception as error:
+        print(
+            "ERROR DELETE /relationships/{relationship_id}:",
             repr(error),
         )
 
