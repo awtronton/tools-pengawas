@@ -29,7 +29,7 @@
 
 .tp-workspace-page-eyebrow {
   color: var(--secondary-text-color, #676879);
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   letter-spacing: 0.065em;
   text-transform: uppercase;
@@ -49,7 +49,7 @@
   background: #f0f1f3;
   padding: 4px 8px;
   color: var(--secondary-text-color, #676879);
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 600;
 }
 
@@ -73,7 +73,7 @@
   background: transparent;
   padding: 8px 1px 11px;
   color: var(--secondary-text-color, #676879);
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 600;
   cursor: pointer;
 }

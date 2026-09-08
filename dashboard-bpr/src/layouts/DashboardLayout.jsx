@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   BarChart3,
@@ -211,6 +211,10 @@ function DashboardLayout({
 
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  const searchPopoverRef = useRef(null)
+  const searchInputRef = useRef(null)
 
   const currentRoute =
     routeMeta[location.pathname] ||
@@ -219,11 +223,77 @@ function DashboardLayout({
   const resolvedActiveItem =
     activeItem ?? currentRoute.activeItem
 
+
+  useEffect(() => {
+    if (!searchOpen) {
+      return undefined
+    }
+
+    window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus()
+    })
+
+    function handlePointerDown(event) {
+      if (
+        searchPopoverRef.current &&
+        !searchPopoverRef.current.contains(
+          event.target,
+        )
+      ) {
+        setSearchOpen(false)
+      }
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') {
+        setSearchOpen(false)
+      }
+    }
+
+    document.addEventListener(
+      'pointerdown',
+      handlePointerDown,
+    )
+    document.addEventListener(
+      'keydown',
+      handleKeyDown,
+    )
+
+    return () => {
+      document.removeEventListener(
+        'pointerdown',
+        handlePointerDown,
+      )
+      document.removeEventListener(
+        'keydown',
+        handleKeyDown,
+      )
+    }
+  }, [searchOpen])
+
   function handleNavigate(path) {
     setMobileOpen(false)
 
     if (location.pathname !== path) {
       navigate(path)
+    }
+  }
+
+  function canUseSidebarHover() {
+    return window.matchMedia(
+      '(hover: hover) and (pointer: fine) and (min-width: 821px)',
+    ).matches
+  }
+
+  function handleSidebarMouseEnter() {
+    if (canUseSidebarHover()) {
+      setCollapsed(false)
+    }
+  }
+
+  function handleSidebarMouseLeave() {
+    if (canUseSidebarHover()) {
+      setCollapsed(true)
     }
   }
 
@@ -248,6 +318,8 @@ function DashboardLayout({
             ? 'vibe-shell-sidebar--mobile-open'
             : ''
         }`}
+        onMouseEnter={handleSidebarMouseEnter}
+        onMouseLeave={handleSidebarMouseLeave}
       >
         <div className="vibe-shell-brand">
           <div className="vibe-shell-brand-mark">
@@ -390,7 +462,7 @@ function DashboardLayout({
 
       <div className="vibe-shell-main">
         <header className="vibe-shell-topbar">
-          <div className="flex min-w-0 items-center gap-3">
+          <div className="vibe-shell-frozen-page">
             <button
               type="button"
               className="vibe-shell-icon-button vibe-shell-mobile-menu"
@@ -400,6 +472,19 @@ function DashboardLayout({
               <Menu size={19} />
             </button>
 
+            <div className="vibe-shell-frozen-page-copy">
+              <div className="vibe-shell-frozen-page-title">
+                {currentRoute.page}
+              </div>
+
+              <div
+                id="vibe-shell-page-meta"
+                className="vibe-shell-frozen-page-meta"
+              />
+            </div>
+          </div>
+
+          <div className="vibe-shell-topbar-actions">
             <div className="vibe-shell-breadcrumb">
               <span>{currentRoute.section}</span>
               <span className="vibe-shell-breadcrumb-separator">
@@ -407,25 +492,58 @@ function DashboardLayout({
               </span>
               <strong>{currentRoute.page}</strong>
             </div>
-          </div>
 
-          <div className="vibe-shell-topbar-actions">
-            <label className="vibe-shell-search">
-              <Search
-                size={16}
-                aria-hidden="true"
-              />
+            <div
+              ref={searchPopoverRef}
+              className={`vibe-shell-search-anchor ${
+                searchOpen
+                  ? 'is-open'
+                  : ''
+              }`}
+            >
+              <button
+                type="button"
+                className={`vibe-shell-icon-button vibe-shell-search-trigger ${
+                  searchOpen
+                    ? 'is-active'
+                    : ''
+                }`}
+                aria-label={
+                  searchOpen
+                    ? 'Tutup pencarian'
+                    : 'Buka pencarian'
+                }
+                aria-expanded={searchOpen}
+                onClick={() =>
+                  setSearchOpen(
+                    (value) => !value,
+                  )
+                }
+              >
+                <Search size={18} />
+              </button>
 
-              <input
-                type="search"
-                placeholder="Cari tabel, bank, atau laporan..."
-                aria-label="Pencarian global"
-              />
+              <div
+                className="vibe-shell-search-popover"
+                aria-hidden={!searchOpen}
+              >
+                <Search
+                  size={17}
+                  aria-hidden="true"
+                />
 
-              <span className="vibe-shell-search-shortcut">
-                ⌘ K
-              </span>
-            </label>
+                <input
+                  ref={searchInputRef}
+                  type="search"
+                  placeholder="Cari tabel, bank, atau laporan..."
+                  aria-label="Pencarian global"
+                />
+
+                <span className="vibe-shell-search-shortcut">
+                  ⌘ K
+                </span>
+              </div>
+            </div>
 
             <button
               type="button"

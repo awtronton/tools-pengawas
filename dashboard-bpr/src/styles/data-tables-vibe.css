@@ -54,7 +54,7 @@
 .tp-column-review-eyebrow {
   margin-bottom: 4px;
   color: #8a8d98;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   letter-spacing: 0.065em;
   text-transform: uppercase;
@@ -113,7 +113,7 @@
   background: #f5f6f8;
   padding: 10px 12px;
   color: #686b77;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   text-align: left;
   white-space: nowrap;
@@ -160,7 +160,7 @@
   background: #f0f1f3;
   padding: 4px 7px;
   color: #7a7d87;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -189,7 +189,7 @@
 .tp-detail-summary span {
   display: block;
   color: #9295a0;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -240,7 +240,7 @@
     Menlo,
     Consolas,
     monospace;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
 }
 
 .tp-column-source {
@@ -248,7 +248,7 @@
   max-width: 150px;
   overflow: hidden;
   color: #8b8e98;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -275,7 +275,7 @@
   border: 0;
   background: transparent;
   color: #0877d1;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   cursor: pointer;
 }
@@ -315,7 +315,7 @@
 
 .tp-locked-label {
   color: #a0a2ab;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -327,7 +327,7 @@
   background: #fafbfc;
   padding: 11px 13px;
   color: #81848e;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   line-height: 1.45;
 }
 
@@ -338,7 +338,7 @@
   background: #f4f9ff;
   padding: 10px 12px;
   color: #39627f;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -353,7 +353,7 @@
 .tp-detail-loading {
   padding: 28px !important;
   color: #9699a3 !important;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   text-align: center !important;
 }
@@ -386,7 +386,7 @@
   padding: 0 8px;
   color: #777a85;
   font-family: var(--tp-font-ui);
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   cursor: pointer;
   transition:

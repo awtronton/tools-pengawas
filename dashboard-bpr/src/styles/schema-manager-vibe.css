@@ -54,7 +54,7 @@
   background: #f0f1f3;
   padding: 2px 6px;
   color: #8a8d98;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -86,7 +86,7 @@
   display: block;
   margin-bottom: 5px;
   color: #676879;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -151,7 +151,7 @@
   background: #fff6f7;
   padding: 10px 12px;
   color: #a13b4a;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -176,7 +176,7 @@
   display: block;
   margin-bottom: 3px;
   color: #8c8f99;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -212,7 +212,7 @@
 .tp-schema-metrics span {
   display: block;
   color: #9699a3;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -247,7 +247,7 @@
 .tp-schema-review-header p {
   margin: 4px 0 0;
   color: #91949e;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -260,7 +260,7 @@
   background: #f7f8fa;
   padding: 5px 8px;
   color: #777a85;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -275,7 +275,7 @@
   min-width: 1040px;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
 }
 
 .tp-schema-table th {
@@ -288,7 +288,7 @@
   background: #f5f6f8;
   padding: 0 10px;
   color: #686b77;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   text-align: left;
   white-space: nowrap;
@@ -301,7 +301,7 @@
   background: #fff;
   padding: 7px 10px;
   color: #45464f;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   vertical-align: middle;
 }
@@ -347,7 +347,7 @@
     Menlo,
     Consolas,
     monospace;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
 }
 
 .tp-schema-status,
@@ -359,7 +359,7 @@
   background: #f0f1f3;
   padding: 4px 7px;
   color: #777a85;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -421,7 +421,7 @@
   align-items: center;
   gap: 6px;
   color: #8a8d98;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -474,7 +474,7 @@
   background: #f2fbf7;
   padding: 10px 12px;
   color: #28745d;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -502,7 +502,7 @@
   display: block;
   margin-bottom: 3px;
   color: #8d909b;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -519,7 +519,7 @@
   margin: 4px 0 0;
   max-width: 640px;
   color: #858894;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   line-height: 1.45;
 }
@@ -533,7 +533,7 @@
   background: #f7f8fa;
   padding: 6px 9px;
   color: #737681;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -557,7 +557,7 @@
   gap: 6px;
   margin-bottom: 14px;
   color: #4f515b;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -577,7 +577,7 @@
   display: block;
   margin-bottom: 5px;
   color: #676879;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -643,7 +643,7 @@
     Menlo,
     Consolas,
     monospace;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -652,7 +652,7 @@
   margin-top: 2px;
   overflow: hidden;
   color: #838691;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -660,7 +660,7 @@
 .tp-relationship-compatibility small {
   grid-column: 1 / -1;
   color: #7c7f8a;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -696,7 +696,7 @@
 
 .tp-relationship-builder-footer > span {
   color: #9295a0;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -725,7 +725,7 @@
 .tp-relationship-list-header p {
   margin: 3px 0 0;
   color: #9598a2;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -759,7 +759,7 @@
 .tp-relationship-card-top h4 {
   margin: 0;
   color: #3e4048;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -769,7 +769,7 @@
   display: block;
   margin-top: 3px;
   color: #8c8f99;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -778,7 +778,7 @@
   background: #f0f1f3;
   padding: 4px 7px;
   color: #81848e;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -821,14 +821,14 @@
 
 .tp-relationship-pair strong {
   color: #4a4c55;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
 .tp-relationship-pair span {
   margin-top: 2px;
   color: #686b76;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -841,7 +841,7 @@
     Menlo,
     Consolas,
     monospace;
-  font-size: 7px;
+  font-size: var(--tp-font-size-min);
 }
 
 .tp-relationship-pair > svg {
@@ -855,7 +855,7 @@
   gap: 5px;
   border-top: 1px solid #f0f1f3;
   padding: 7px 10px;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -890,7 +890,7 @@
   background: transparent;
   padding: 0 7px;
   font-family: var(--tp-font-ui);
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   cursor: pointer;
 }
@@ -921,13 +921,13 @@
 
 .tp-relationship-empty strong {
   color: #6c6f79;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
 .tp-relationship-empty span {
   max-width: 220px;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   line-height: 1.45;
 }
@@ -940,7 +940,7 @@
   background: #f8f9fb;
   padding: 9px 13px;
   color: #858894;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   line-height: 1.45;
 }
@@ -1013,7 +1013,7 @@
 .tp-flow-library-header span {
   display: block;
   color: #8d909b;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1023,7 +1023,7 @@
   display: block;
   margin-top: 2px;
   color: #444650;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -1053,7 +1053,7 @@
   background: transparent;
   color: #323338;
   font-family: var(--tp-font-ui);
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -1076,7 +1076,7 @@
   padding: 0 7px;
   color: #5e616c;
   font-family: var(--tp-font-ui);
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   text-align: left;
   cursor: pointer;
@@ -1104,7 +1104,7 @@
 
 .tp-flow-library-item small {
   color: #8c8f99;
-  font-size: 7px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -1127,7 +1127,7 @@
 .tp-flow-canvas-toolbar strong {
   display: block;
   color: #464851;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -1135,7 +1135,7 @@
   display: block;
   margin-top: 2px;
   color: #91949e;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -1150,7 +1150,7 @@
   padding: 0 8px;
   color: #5f6270;
   font-family: var(--tp-font-ui);
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   cursor: pointer;
 }
@@ -1249,7 +1249,7 @@
 .tp-flow-table-node-header strong {
   overflow: hidden;
   color: #353740;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1258,7 +1258,7 @@
 .tp-flow-table-node-header > span {
   flex: 0 0 auto;
   color: #9a9da7;
-  font-size: 7px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -1302,7 +1302,7 @@
 .tp-flow-column-name span {
   overflow: hidden;
   color: #4a4c55;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1317,7 +1317,7 @@
     Menlo,
     Consolas,
     monospace;
-  font-size: 6.5px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   text-align: right;
   text-overflow: ellipsis;
@@ -1357,7 +1357,7 @@
   padding: 3px 6px;
   color: #566274;
   font-family: var(--tp-font-ui);
-  font-size: 7px;
+  font-size: var(--tp-font-size-min);
   font-weight: 600;
   box-shadow:
     0 1px 4px rgba(17, 24, 39, 0.07);
@@ -1398,13 +1398,13 @@
 }
 
 .tp-cardinality-helper-heading span {
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
 .tp-cardinality-helper-heading small {
   color: #9a9da6;
-  font-size: 7px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -1431,7 +1431,7 @@
 .tp-cardinality-box-caption {
   fill: #9699a3;
   font-family: var(--tp-font-ui);
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   letter-spacing: 0.08em;
 }
@@ -1455,7 +1455,7 @@
 .tp-cardinality-helper p {
   margin: 5px 0 0;
   color: #666975;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   line-height: 1.45;
 }
@@ -1464,7 +1464,7 @@
   display: block;
   margin-top: 3px;
   color: #8e919b;
-  font-size: 7px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -1525,14 +1525,14 @@
 
 .tp-flow-empty-cue strong {
   color: #676a75;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
 .tp-flow-empty-cue span {
   max-width: 240px;
   color: #9a9da7;
-  font-size: 8.5px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   line-height: 1.45;
 }
@@ -1547,7 +1547,7 @@
 .tp-cardinality-helper p {
   margin: 7px 0 0;
   color: #565963;
-  font-size: 10.5px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   line-height: 1.5;
 }
@@ -1556,18 +1556,18 @@
   display: block;
   margin-top: 5px;
   color: #777a85;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   line-height: 1.45;
 }
 
 .tp-cardinality-helper-heading span {
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
 .tp-cardinality-helper-heading small {
-  font-size: 7.5px;
+  font-size: var(--tp-font-size-min);
 }
 
 @media (max-width: 760px) {
@@ -1605,7 +1605,7 @@
   display: block;
   margin-bottom: 3px;
   color: #8d909b;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1622,7 +1622,7 @@
   margin: 4px 0 0;
   max-width: 700px;
   color: #858894;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   line-height: 1.45;
 }
@@ -1634,7 +1634,7 @@
   background: #f4f8fd;
   padding: 6px 9px;
   color: #58728f;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -1674,7 +1674,7 @@
   border-radius: 7px;
   background: #eaf3fe;
   color: #1768a9;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 600;
 }
 
@@ -1688,7 +1688,7 @@
 .tp-sql-section-heading p {
   margin: 3px 0 0;
   color: #9699a3;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   line-height: 1.4;
 }
@@ -1714,7 +1714,7 @@
   background: #fff;
   color: #646771;
   font-family: var(--tp-font-ui);
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   cursor: pointer;
 }
@@ -1765,7 +1765,7 @@
   max-width: 150px;
   overflow: hidden;
   color: #43454d;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1775,7 +1775,7 @@
   display: block;
   margin-top: 2px;
   color: #989ba4;
-  font-size: 7px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -1798,7 +1798,7 @@
 
 .tp-sql-path-connector span {
   color: #7d808b;
-  font-size: 6.5px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   text-align: center;
   white-space: nowrap;
@@ -1863,7 +1863,7 @@
     Menlo,
     Consolas,
     monospace;
-  font-size: 6.5px;
+  font-size: var(--tp-font-size-min);
   line-height: 1.4;
   text-overflow: ellipsis;
 }
@@ -1881,7 +1881,7 @@
 
 .tp-sql-join-type-row small {
   color: #9295a0;
-  font-size: 6.5px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   line-height: 1.35;
 }
@@ -1904,7 +1904,7 @@
   display: block;
   margin-bottom: 5px;
   color: #757883;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -1918,7 +1918,7 @@
   background: #fff9ef;
   padding: 8px 9px;
   color: #91601d;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   line-height: 1.4;
 }
@@ -1961,7 +1961,7 @@
 .tp-sql-column-group-header strong {
   overflow: hidden;
   color: #4a4c55;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1969,7 +1969,7 @@
 
 .tp-sql-column-group-header span {
   color: #9a9da7;
-  font-size: 6.5px;
+  font-size: var(--tp-font-size-min);
   white-space: nowrap;
 }
 
@@ -1978,7 +1978,7 @@
   background: transparent;
   color: #4677a2;
   font-family: var(--tp-font-ui);
-  font-size: 7px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   cursor: pointer;
 }
@@ -2046,7 +2046,7 @@
   gap: 4px;
   overflow: hidden;
   color: #565963;
-  font-size: 7.5px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2066,7 +2066,7 @@
     Menlo,
     Consolas,
     monospace;
-  font-size: 6px;
+  font-size: var(--tp-font-size-min);
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2075,7 +2075,7 @@
 .tp-sql-loading {
   margin-bottom: 8px;
   color: #8d909b;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
 }
 
 .tp-sql-mask-note {
@@ -2087,7 +2087,7 @@
   background: #f7f4fb;
   padding: 8px 9px;
   color: #786789;
-  font-size: 7.5px;
+  font-size: var(--tp-font-size-min);
   line-height: 1.45;
 }
 
@@ -2117,7 +2117,7 @@
 .tp-sql-preview-heading strong {
   display: block;
   color: #464850;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -2125,7 +2125,7 @@
   display: block;
   margin-top: 2px;
   color: #9a9da6;
-  font-size: 6.5px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
 }
 
@@ -2159,14 +2159,14 @@
 .tp-sql-preview-summary span {
   display: block;
   color: #989ba4;
-  font-size: 6.5px;
+  font-size: var(--tp-font-size-min);
 }
 
 .tp-sql-preview-summary strong {
   display: block;
   margin-top: 2px;
   color: #555862;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
@@ -2184,7 +2184,7 @@
     Menlo,
     Consolas,
     monospace;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   line-height: 1.65;
   white-space: pre;
@@ -2198,7 +2198,7 @@
   background: #fff;
   padding: 8px 9px;
   color: #8c8f99;
-  font-size: 7px;
+  font-size: var(--tp-font-size-min);
   font-weight: 400;
   line-height: 1.4;
 }
@@ -2213,7 +2213,7 @@
 
 .tp-sql-next-stage > span {
   color: #999ca5;
-  font-size: 6px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -2223,14 +2223,14 @@
   display: block;
   margin-top: 2px;
   color: #545761;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 500;
 }
 
 .tp-sql-next-stage p {
   margin: 3px 0 0;
   color: #8c8f99;
-  font-size: 7px;
+  font-size: var(--tp-font-size-min);
   line-height: 1.4;
 }
 

@@ -1,4 +1,27 @@
 /* =========================================================
+   Tools Pengawas — Typography Minimum Standard
+   ========================================================= */
+
+:root {
+  --tp-font-size-min: 11px;
+  --tp-font-size-small: 12px;
+  --tp-font-size-body: 13px;
+}
+
+[class~="text-[6px]"],
+[class~="text-[6.5px]"],
+[class~="text-[7px]"],
+[class~="text-[7.5px]"],
+[class~="text-[8px]"],
+[class~="text-[8.5px]"],
+[class~="text-[9px]"],
+[class~="text-[9.5px]"],
+[class~="text-[10px]"],
+[class~="text-[10.5px]"] {
+  font-size: var(--tp-font-size-min) !important;
+}
+
+/* =========================================================
    Tools Pengawas — Product Typography
    Figtree 400/500/600 only.
    Avoids the heavy 700/800 feel from the original dashboard.

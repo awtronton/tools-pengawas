@@ -1,7 +1,7 @@
 :root {
   --tp-shell-sidebar-width: 252px;
   --tp-shell-sidebar-collapsed: 72px;
-  --tp-shell-topbar-height: 56px;
+  --tp-shell-topbar-height: 76px;
 
   --tp-shell-bg:
     var(--secondary-background-color, #f6f7fb);
@@ -42,7 +42,6 @@
   display: flex;
   width: var(--tp-shell-sidebar-width);
   flex-direction: column;
-  border-right: 1px solid var(--tp-shell-border-soft);
   background: var(--tp-shell-surface);
   transition:
     width 160ms ease,
@@ -58,7 +57,6 @@
   min-height: var(--tp-shell-topbar-height);
   align-items: center;
   gap: 9px;
-  border-bottom: 1px solid var(--tp-shell-border-soft);
   padding: 0 11px;
 }
 
@@ -89,7 +87,7 @@
 .vibe-shell-brand-subtitle {
   margin-top: 3px;
   color: var(--tp-shell-text-secondary);
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   line-height: 1;
 }
 
@@ -157,7 +155,7 @@
   margin-bottom: 5px;
   padding: 0 8px;
   color: #9a9dac;
-  font-size: 9px;
+  font-size: var(--tp-font-size-min);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -262,8 +260,7 @@
   height: var(--tp-shell-topbar-height);
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  border-bottom: 1px solid var(--tp-shell-border-soft);
+  gap: 18px;
   background: rgba(255, 255, 255, 0.96);
   padding: 0 20px;
   backdrop-filter: blur(10px);
@@ -272,10 +269,12 @@
 .vibe-shell-breadcrumb {
   display: flex;
   min-width: 0;
+  max-width: min(420px, 34vw);
   align-items: center;
   gap: 7px;
   color: var(--tp-shell-text-secondary);
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
+  white-space: nowrap;
 }
 
 .vibe-shell-breadcrumb strong {
@@ -292,8 +291,15 @@
 
 .vibe-shell-topbar-actions {
   display: flex;
+  min-width: 0;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
+}
+
+.vibe-shell-topbar-actions
+  .vibe-shell-breadcrumb {
+  margin-right: 4px;
 }
 
 .vibe-shell-icon-button {
@@ -319,47 +325,119 @@
   color: var(--tp-shell-text);
 }
 
-.vibe-shell-search {
+.vibe-shell-search-anchor {
+  position: relative;
   display: flex;
-  height: 34px;
-  width: min(350px, 32vw);
   align-items: center;
-  gap: 8px;
+}
+
+.vibe-shell-search-trigger {
+  position: relative;
+  z-index: 3;
+  transition:
+    background 150ms ease,
+    color 150ms ease,
+    transform 180ms ease;
+}
+
+.vibe-shell-search-trigger:hover,
+.vibe-shell-search-trigger.is-active {
+  background: #f0f2f5;
+  color: var(--tp-shell-primary);
+}
+
+.vibe-shell-search-trigger.is-active {
+  transform: scale(1.04);
+}
+
+.vibe-shell-search-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: -2px;
+  z-index: 80;
+  display: flex;
+  width: min(420px, 68vw);
+  height: 44px;
+  align-items: center;
+  gap: 9px;
   border: 1px solid var(--tp-shell-border);
-  border-radius: 6px;
-  background: var(--tp-shell-surface);
-  padding: 0 9px;
+  border-radius: 18px 4px 18px 18px;
+  background: rgba(255, 255, 255, 0.99);
+  padding: 0 11px;
   color: #8d909b;
+  opacity: 0;
+  pointer-events: none;
+  transform:
+    translateY(-8px)
+    scale(0.18, 0.32);
+  transform-origin: 96% 0%;
+  box-shadow:
+    0 12px 32px rgba(15, 23, 42, 0.12),
+    0 2px 8px rgba(15, 23, 42, 0.05);
+  transition:
+    opacity 140ms ease,
+    transform 220ms
+      cubic-bezier(0.2, 0.82, 0.2, 1);
 }
 
-.vibe-shell-search:focus-within {
-  border-color: var(--tp-shell-primary);
-  box-shadow: 0 0 0 2px rgba(0, 115, 234, 0.08);
+.vibe-shell-search-anchor.is-open
+  .vibe-shell-search-popover {
+  opacity: 1;
+  pointer-events: auto;
+  transform:
+    translateY(0)
+    scale(1);
 }
 
-.vibe-shell-search input {
+.vibe-shell-search-popover::before {
+  position: absolute;
+  top: -7px;
+  right: 11px;
+  width: 13px;
+  height: 13px;
+  border-top: 1px solid var(--tp-shell-border);
+  border-left: 1px solid var(--tp-shell-border);
+  background: #fff;
+  content: '';
+  transform: rotate(45deg);
+}
+
+.vibe-shell-search-popover > svg {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+}
+
+.vibe-shell-search-popover input {
+  position: relative;
+  z-index: 1;
   min-width: 0;
   flex: 1;
   border: 0;
   outline: 0;
   background: transparent;
   color: var(--tp-shell-text);
-  font-size: 10px;
+  font-family: var(--tp-font-ui);
+  font-size: var(--tp-font-size-min);
+  font-weight: 400;
 }
 
-.vibe-shell-search input::placeholder {
-  color: #a3a6b0;
+.vibe-shell-search-popover input::placeholder {
+  color: #a0a3ad;
 }
 
 .vibe-shell-search-shortcut {
+  position: relative;
+  z-index: 1;
   border: 1px solid #e0e2e8;
   border-radius: 4px;
   background: #f7f8fa;
   padding: 2px 5px;
   color: #9a9da8;
-  font-size: 8px;
+  font-size: var(--tp-font-size-min);
   font-weight: 700;
 }
+
 
 .vibe-shell-notification {
   position: relative;
@@ -380,7 +458,7 @@
   height: 30px;
   width: 30px;
   margin-left: 2px;
-  font-size: 10px;
+  font-size: var(--tp-font-size-min);
   font-weight: 800;
 }
 
@@ -487,4 +565,141 @@
 .vibe-shell-icon-button:focus-visible {
   outline: 2px solid rgba(0, 115, 234, 0.35);
   outline-offset: 1px;
+}
+
+
+@media (max-width: 820px) {
+  .vibe-shell-topbar-actions
+    .vibe-shell-breadcrumb {
+    max-width: 36vw;
+  }
+
+  .vibe-shell-breadcrumb span,
+  .vibe-shell-breadcrumb strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .vibe-shell-search-popover {
+    position: fixed;
+    top: calc(
+      var(--tp-shell-topbar-height) + 8px
+    );
+    right: 12px;
+    left: 12px;
+    width: auto;
+    transform-origin: 94% 0%;
+  }
+
+  .vibe-shell-search-popover::before {
+    right: 75px;
+  }
+}
+
+/* =========================================================
+   UI Step 5 — Frozen title metadata + auto-collapse sidebar
+   ========================================================= */
+
+.vibe-shell-frozen-page {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.vibe-shell-frozen-page-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+}
+
+.vibe-shell-frozen-page-title {
+  overflow: hidden;
+  color: var(--tp-shell-text);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vibe-shell-frozen-page-meta {
+  display: flex;
+  min-width: 0;
+  min-height: 22px;
+  align-items: center;
+}
+
+.tp-frozen-page-meta-content {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+}
+
+.tp-frozen-page-badge {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #eef0f3;
+  padding: 4px 9px;
+  color: #737681;
+  font-size: var(--tp-font-size-min);
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.tp-frozen-page-description {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--tp-shell-text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * WorkspacePageHeader sekarang menggunakan React portal.
+ * Karena itu tidak ada lagi page-heading duplicate di body.
+ */
+.tp-workspace-page-header,
+.tp-workspace-page-header--compact {
+  display: none;
+}
+
+/*
+ * Sidebar desktop:
+ * - pointer masuk  -> expand
+ * - pointer keluar -> collapse
+ * State yang sama tetap menjaga margin body sinkron.
+ */
+@media (hover: hover) and (pointer: fine) and (min-width: 821px) {
+  .vibe-shell-sidebar {
+    will-change: width;
+  }
+}
+
+@media (max-width: 820px) {
+  .vibe-shell-frozen-page {
+    min-width: 0;
+  }
+
+  .vibe-shell-frozen-page-copy {
+    min-width: 0;
+  }
+
+  .vibe-shell-frozen-page-title {
+    max-width: 38vw;
+    font-size: 14px;
+  }
+
+  .vibe-shell-frozen-page-meta {
+    display: none;
+  }
 }
