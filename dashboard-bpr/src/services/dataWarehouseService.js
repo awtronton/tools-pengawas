@@ -172,3 +172,111 @@ export async function saveExcel({
     "Gagal menyimpan data ke database"
   );
 }
+
+
+export async function getTableSummaries() {
+  return requestJson(
+    `${API_URL}/tables-summary`,
+    {
+      method: "GET",
+    },
+    "Gagal membaca ringkasan tabel"
+  );
+}
+
+export async function getTableDetail(tableName) {
+  return requestJson(
+    `${API_URL}/tables/${encodeURIComponent(tableName)}/detail`,
+    {
+      method: "GET",
+    },
+    "Gagal membaca detail tabel"
+  );
+}
+
+export async function renameTableColumn({
+  tableName,
+  oldName,
+  newName,
+}) {
+  return requestJson(
+    `${API_URL}/tables/${encodeURIComponent(tableName)}/column`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        old_name: oldName,
+        new_name: newName,
+      }),
+    },
+    "Gagal mengubah nama kolom"
+  );
+}
+
+
+export async function getTableExplorerOptions(tableName) {
+  return requestJson(
+    `${API_URL}/tables/${encodeURIComponent(tableName)}/explorer/options`,
+    {
+      method: "GET",
+    },
+    "Gagal membaca opsi Table Explorer"
+  );
+}
+
+export async function exploreTable({
+  tableName,
+  page = 1,
+  pageSize = 20,
+  search = "",
+  bankId = "",
+  month = "",
+  year = "",
+  sortColumn = "",
+  sortDirection = "asc",
+}) {
+  const params = new URLSearchParams();
+
+  params.set("page", String(page));
+  params.set("page_size", String(pageSize));
+
+  if (search) params.set("search", search);
+  if (bankId) params.set("bank_id", bankId);
+  if (month) params.set("month", String(month));
+  if (year) params.set("year", String(year));
+  if (sortColumn) params.set("sort_column", sortColumn);
+
+  params.set("sort_direction", sortDirection);
+
+  return requestJson(
+    `${API_URL}/tables/${encodeURIComponent(tableName)}/explorer?${params.toString()}`,
+    {
+      method: "GET",
+    },
+    "Gagal membaca data Table Explorer"
+  );
+}
+
+
+export async function setTableColumnMasking({
+  tableName,
+  columnName,
+  masked,
+}) {
+  return requestJson(
+    `${API_URL}/tables/${encodeURIComponent(tableName)}/column-masking`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        column_name: columnName,
+        masked: Boolean(masked),
+      }),
+    },
+    "Gagal memperbarui masking kolom"
+  );
+}

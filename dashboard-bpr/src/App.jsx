@@ -12,6 +12,8 @@ import Perbandingan from './pages/Perbandingan'
 import Laporan from './pages/Laporan'
 import Dokumen from './pages/Dokumen'
 import UploadData from './pages/UploadData'
+import DataTables from './pages/DataTables'
+import TableExplorer from './pages/TableExplorer'
 import PlaceholderPage from './components/ui/PlaceholderPage'
 
 function App() {
@@ -36,24 +38,12 @@ function App() {
 
         <Route
           path="/tables"
-          element={
-            <PlaceholderPage
-              title="Data Tables"
-              description="Daftar tabel data warehouse akan ditampilkan di sini."
-              module="Data Warehouse"
-            />
-          }
+          element={<DataTables />}
         />
 
         <Route
           path="/explorer"
-          element={
-            <PlaceholderPage
-              title="Table Explorer"
-              description="Browse, filter, search, dan inspeksi data tabel akan tersedia di sini."
-              module="Data Warehouse"
-            />
-          }
+          element={<TableExplorer />}
         />
 
         <Route

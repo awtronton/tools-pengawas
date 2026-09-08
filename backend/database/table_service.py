@@ -2,16 +2,20 @@ import re
 
 import pandas as pd
 from sqlalchemy import (
+    Boolean,
     Column,
     Integer,
     MetaData,
     String,
     Table,
     UniqueConstraint,
+    cast,
     delete,
     func,
     inspect,
+    or_,
     select,
+    text,
 )
 
 from database.connection import engine
@@ -19,7 +23,12 @@ from database.connection import engine
 
 SYSTEM_COLUMNS = {"bank_id", "bulan", "tahun"}
 SCHEMA_MAPPING_TABLE_NAME = "warehouse_schema_mapping"
-INTERNAL_TABLES = {SCHEMA_MAPPING_TABLE_NAME}
+COLUMN_SETTINGS_TABLE_NAME = "warehouse_column_settings"
+MASK_VALUE = "••••••••"
+INTERNAL_TABLES = {
+    SCHEMA_MAPPING_TABLE_NAME,
+    COLUMN_SETTINGS_TABLE_NAME,
+}
 
 
 # =====================================================
@@ -43,11 +52,33 @@ schema_mapping_table = Table(
     ),
 )
 
+column_settings_table = Table(
+    COLUMN_SETTINGS_TABLE_NAME,
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("table_name", String(63), nullable=False),
+    Column("column_name", String(63), nullable=False),
+    Column(
+        "is_masked",
+        Boolean,
+        nullable=False,
+        default=False,
+    ),
+    UniqueConstraint(
+        "table_name",
+        "column_name",
+        name="uq_column_settings_table_column",
+    ),
+)
+
 
 def ensure_internal_tables():
     metadata.create_all(
         engine,
-        tables=[schema_mapping_table],
+        tables=[
+            schema_mapping_table,
+            column_settings_table,
+        ],
     )
 
 
@@ -577,4 +608,568 @@ def replace_period_data(
         "duplicate_action": "replace",
         "replaced_rows": deleted_rows,
         "inserted_rows": len(df),
+    }
+
+
+# =====================================================
+# COLUMN MASKING SETTINGS
+# =====================================================
+
+def get_masked_columns(table_name: str):
+    table_name = validate_table_name(table_name)
+    ensure_internal_tables()
+
+    statement = (
+        select(
+            column_settings_table.c.column_name
+        )
+        .where(
+            column_settings_table.c.table_name
+            == table_name,
+            column_settings_table.c.is_masked
+            .is_(True),
+        )
+        .order_by(
+            column_settings_table.c.column_name
+        )
+    )
+
+    with engine.connect() as connection:
+        rows = connection.execute(
+            statement
+        ).scalars().all()
+
+    return set(rows)
+
+
+def set_column_masking(
+    table_name: str,
+    column_name: str,
+    masked: bool,
+):
+    table_name = validate_table_name(table_name)
+    column_name = validate_column_name(
+        column_name
+    )
+
+    if column_name in SYSTEM_COLUMNS:
+        raise ValueError(
+            f"Kolom sistem '{column_name}' "
+            "tidak dapat dimasking."
+        )
+
+    columns = get_table_columns(table_name)
+
+    if column_name not in columns:
+        raise ValueError(
+            f"Kolom '{column_name}' tidak ditemukan "
+            f"pada tabel '{table_name}'."
+        )
+
+    ensure_internal_tables()
+
+    with engine.begin() as connection:
+        existing_id = connection.execute(
+            select(
+                column_settings_table.c.id
+            ).where(
+                column_settings_table.c.table_name
+                == table_name,
+                column_settings_table.c.column_name
+                == column_name,
+            )
+        ).scalar_one_or_none()
+
+        if existing_id is None:
+            connection.execute(
+                column_settings_table.insert().values(
+                    table_name=table_name,
+                    column_name=column_name,
+                    is_masked=bool(masked),
+                )
+            )
+        else:
+            connection.execute(
+                column_settings_table.update()
+                .where(
+                    column_settings_table.c.id
+                    == existing_id
+                )
+                .values(
+                    is_masked=bool(masked)
+                )
+            )
+
+    return {
+        "table_name": table_name,
+        "column_name": column_name,
+        "masked": bool(masked),
+    }
+
+
+# =====================================================
+# DATA TABLE CATALOG / COLUMN REVIEW
+# =====================================================
+
+def get_table_summary(table_name: str):
+    table_name = validate_table_name(table_name)
+    table = _get_reflected_table(table_name)
+    columns = get_table_columns(table_name)
+
+    with engine.connect() as connection:
+        row_count = int(
+            connection.execute(
+                select(func.count()).select_from(table)
+            ).scalar_one()
+        )
+
+        bank_count = None
+        min_year = None
+        max_year = None
+
+        if "bank_id" in columns:
+            bank_count = int(
+                connection.execute(
+                    select(
+                        func.count(
+                            func.distinct(table.c.bank_id)
+                        )
+                    ).select_from(table)
+                ).scalar_one()
+                or 0
+            )
+
+        if "tahun" in columns:
+            min_year, max_year = connection.execute(
+                select(
+                    func.min(table.c.tahun),
+                    func.max(table.c.tahun),
+                ).select_from(table)
+            ).one()
+
+    schema_mapping = get_schema_mapping(table_name)
+
+    return {
+        "table_name": table_name,
+        "row_count": row_count,
+        "column_count": len(columns),
+        "bank_count": bank_count,
+        "min_year": int(min_year) if min_year is not None else None,
+        "max_year": int(max_year) if max_year is not None else None,
+        "schema_status": (
+            "mapped"
+            if schema_mapping
+            else "unmapped"
+        ),
+    }
+
+
+def get_all_table_summaries():
+    return [
+        get_table_summary(table_name)
+        for table_name in get_all_tables()
+    ]
+
+
+def get_table_column_details(table_name: str):
+    table_name = validate_table_name(table_name)
+    inspector = inspect(engine)
+
+    if not inspector.has_table(table_name):
+        raise ValueError(
+            f"Tabel '{table_name}' tidak ditemukan."
+        )
+
+    mapping = get_schema_mapping(table_name)
+    mapping_by_database_column = {
+        item["database_column"]: item
+        for item in mapping
+    }
+    masked_columns = get_masked_columns(
+        table_name
+    )
+
+    details = []
+
+    for ordinal, column in enumerate(
+        inspector.get_columns(table_name),
+        start=1,
+    ):
+        name = column["name"]
+        mapping_item = mapping_by_database_column.get(name)
+
+        details.append(
+            {
+                "ordinal": ordinal,
+                "column_name": name,
+                "data_type": str(column["type"]),
+                "nullable": bool(column.get("nullable", True)),
+                "source_column": (
+                    mapping_item["source_column"]
+                    if mapping_item
+                    else None
+                ),
+                "source_ordinal": (
+                    mapping_item["source_ordinal"]
+                    if mapping_item
+                    else None
+                ),
+                "editable": name not in SYSTEM_COLUMNS,
+                "system_column": name in SYSTEM_COLUMNS,
+                "maskable": name not in SYSTEM_COLUMNS,
+                "masked": name in masked_columns,
+            }
+        )
+
+    return details
+
+
+def rename_table_column(
+    table_name: str,
+    old_name: str,
+    new_name: str,
+):
+    table_name = validate_table_name(table_name)
+    old_name = validate_column_name(old_name)
+    new_name = validate_column_name(new_name)
+
+    if old_name in SYSTEM_COLUMNS:
+        raise ValueError(
+            f"Kolom sistem '{old_name}' tidak dapat diubah."
+        )
+
+    if new_name in SYSTEM_COLUMNS:
+        raise ValueError(
+            f"Nama '{new_name}' dicadangkan untuk kolom sistem."
+        )
+
+    columns = get_table_columns(table_name)
+
+    if old_name not in columns:
+        raise ValueError(
+            f"Kolom '{old_name}' tidak ditemukan pada tabel '{table_name}'."
+        )
+
+    if new_name == old_name:
+        raise ValueError(
+            "Nama kolom baru sama dengan nama kolom saat ini."
+        )
+
+    if new_name in columns:
+        raise ValueError(
+            f"Kolom '{new_name}' sudah terdapat pada tabel '{table_name}'."
+        )
+
+    preparer = engine.dialect.identifier_preparer
+    quoted_table = preparer.quote(table_name)
+    quoted_old = preparer.quote(old_name)
+    quoted_new = preparer.quote(new_name)
+
+    ensure_internal_tables()
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                f"ALTER TABLE {quoted_table} "
+                f"RENAME COLUMN {quoted_old} TO {quoted_new}"
+            )
+        )
+
+        connection.execute(
+            schema_mapping_table.update()
+            .where(
+                schema_mapping_table.c.table_name == table_name,
+                schema_mapping_table.c.database_column == old_name,
+            )
+            .values(
+                database_column=new_name
+            )
+        )
+
+        connection.execute(
+            column_settings_table.update()
+            .where(
+                column_settings_table.c.table_name == table_name,
+                column_settings_table.c.column_name == old_name,
+            )
+            .values(
+                column_name=new_name
+            )
+        )
+
+    return {
+        "table_name": table_name,
+        "old_name": old_name,
+        "new_name": new_name,
+    }
+
+
+# =====================================================
+# TABLE EXPLORER
+# =====================================================
+
+def get_table_explorer_options(table_name: str):
+    table_name = validate_table_name(table_name)
+    table = _get_reflected_table(table_name)
+    columns = get_table_column_details(table_name)
+
+    options = {
+        "bank_ids": [],
+        "months": [],
+        "years": [],
+    }
+
+    with engine.connect() as connection:
+        if "bank_id" in table.c:
+            rows = connection.execute(
+                select(table.c.bank_id)
+                .where(table.c.bank_id.is_not(None))
+                .distinct()
+                .order_by(table.c.bank_id)
+            ).scalars().all()
+
+            options["bank_ids"] = [
+                str(value)
+                for value in rows
+            ]
+
+        if "bulan" in table.c:
+            rows = connection.execute(
+                select(table.c.bulan)
+                .where(table.c.bulan.is_not(None))
+                .distinct()
+                .order_by(table.c.bulan)
+            ).scalars().all()
+
+            options["months"] = [
+                int(value)
+                for value in rows
+            ]
+
+        if "tahun" in table.c:
+            rows = connection.execute(
+                select(table.c.tahun)
+                .where(table.c.tahun.is_not(None))
+                .distinct()
+                .order_by(table.c.tahun)
+            ).scalars().all()
+
+            options["years"] = [
+                int(value)
+                for value in rows
+            ]
+
+    return {
+        "table_name": table_name,
+        "columns": columns,
+        "filters": options,
+    }
+
+
+def explore_table_data(
+    table_name: str,
+    *,
+    page: int = 1,
+    page_size: int = 20,
+    search: str | None = None,
+    bank_id: str | None = None,
+    month: int | None = None,
+    year: int | None = None,
+    sort_column: str | None = None,
+    sort_direction: str = "asc",
+):
+    table_name = validate_table_name(table_name)
+    table = _get_reflected_table(table_name)
+    column_names = [
+        column.name
+        for column in table.columns
+    ]
+    masked_columns = get_masked_columns(
+        table_name
+    )
+
+    page = max(int(page or 1), 1)
+    page_size = max(
+        min(int(page_size or 20), 200),
+        1,
+    )
+
+    filters = []
+
+    if bank_id and "bank_id" in table.c:
+        filters.append(
+            table.c.bank_id == str(bank_id)
+        )
+
+    if month is not None and "bulan" in table.c:
+        filters.append(
+            table.c.bulan == int(month)
+        )
+
+    if year is not None and "tahun" in table.c:
+        filters.append(
+            table.c.tahun == int(year)
+        )
+
+    search = str(search or "").strip()
+
+    if search:
+        search_pattern = f"%{search}%"
+
+        search_clauses = [
+            cast(column, String).ilike(
+                search_pattern
+            )
+            for column in table.columns
+            if column.name
+            not in masked_columns
+        ]
+
+        if search_clauses:
+            filters.append(
+                or_(*search_clauses)
+            )
+
+    count_statement = (
+        select(func.count())
+        .select_from(table)
+    )
+
+    if filters:
+        count_statement = (
+            count_statement.where(*filters)
+        )
+
+    with engine.connect() as connection:
+        total_rows = int(
+            connection.execute(
+                count_statement
+            ).scalar_one()
+            or 0
+        )
+
+        total_pages = max(
+            (total_rows + page_size - 1)
+            // page_size,
+            1,
+        )
+
+        page = min(page, total_pages)
+
+        statement = select(table)
+
+        if filters:
+            statement = statement.where(
+                *filters
+            )
+
+        sort_direction = str(
+            sort_direction or "asc"
+        ).lower()
+
+        if sort_direction not in {
+            "asc",
+            "desc",
+        }:
+            sort_direction = "asc"
+
+        if sort_column:
+            sort_column = validate_column_name(
+                sort_column
+            )
+
+            if sort_column not in column_names:
+                raise ValueError(
+                    f"Kolom sort '{sort_column}' "
+                    f"tidak ditemukan pada tabel "
+                    f"'{table_name}'."
+                )
+
+            if sort_column in masked_columns:
+                raise ValueError(
+                    f"Kolom '{sort_column}' sedang "
+                    "dimasking dan tidak dapat "
+                    "digunakan untuk sorting."
+                )
+
+            sort_expression = table.c[
+                sort_column
+            ]
+
+            statement = statement.order_by(
+                sort_expression.desc()
+                if sort_direction == "desc"
+                else sort_expression.asc()
+            )
+
+        else:
+            default_sort_columns = [
+                name
+                for name in (
+                    "bank_id",
+                    "tahun",
+                    "bulan",
+                )
+                if name in table.c
+            ]
+
+            if default_sort_columns:
+                statement = statement.order_by(
+                    *[
+                        table.c[name].asc()
+                        for name in default_sort_columns
+                    ]
+                )
+            elif column_names:
+                statement = statement.order_by(
+                    table.c[
+                        column_names[0]
+                    ].asc()
+                )
+
+        statement = (
+            statement
+            .offset(
+                (page - 1) * page_size
+            )
+            .limit(page_size)
+        )
+
+        rows = connection.execute(
+            statement
+        ).mappings().all()
+
+    return {
+        "table_name": table_name,
+        "rows": [
+            {
+                key: (
+                    MASK_VALUE
+                    if key in masked_columns
+                    else value
+                )
+                for key, value
+                in dict(row).items()
+            }
+            for row in rows
+        ],
+        "masked_columns": sorted(
+            masked_columns
+        ),
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_rows": total_rows,
+            "total_pages": total_pages,
+        },
+        "sort": {
+            "column": sort_column,
+            "direction": sort_direction,
+        },
+        "filters": {
+            "search": search,
+            "bank_id": bank_id,
+            "month": month,
+            "year": year,
+        },
     }

@@ -2,7 +2,8 @@ import json
 from io import BytesIO
 
 import pandas as pd
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from database.table_service import (
@@ -10,7 +11,14 @@ from database.table_service import (
     count_period_rows,
     create_new_table,
     get_all_tables,
+    get_all_table_summaries,
     get_schema_mapping,
+    get_table_column_details,
+    get_table_explorer_options,
+    get_table_summary,
+    explore_table_data,
+    rename_table_column,
+    set_column_masking,
     replace_period_data,
     require_schema_mapping,
 )
@@ -51,6 +59,16 @@ app.add_middleware(
 # =====================================================
 
 SYSTEM_COLUMNS = {"bank_id", "bulan", "tahun"}
+
+
+class RenameColumnRequest(BaseModel):
+    old_name: str
+    new_name: str
+
+
+class ColumnMaskingRequest(BaseModel):
+    column_name: str
+    masked: bool
 
 
 def dataframe_to_records(df):
@@ -266,6 +284,193 @@ def list_tables():
     except Exception as error:
         print(
             "ERROR /tables:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.get("/tables-summary")
+def table_summaries():
+    try:
+        summaries = get_all_table_summaries()
+
+        return {
+            "status": "success",
+            "count": len(summaries),
+            "tables": summaries,
+        }
+
+    except Exception as error:
+        print(
+            "ERROR /tables-summary:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.get("/tables/{table_name}/detail")
+def table_detail(table_name: str):
+    try:
+        summary = get_table_summary(table_name)
+        columns = get_table_column_details(table_name)
+
+        return {
+            "status": "success",
+            "summary": summary,
+            "columns": columns,
+        }
+
+    except Exception as error:
+        print(
+            "ERROR /tables/{table_name}/detail:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.patch("/tables/{table_name}/column")
+def rename_column(
+    table_name: str,
+    payload: RenameColumnRequest,
+):
+    try:
+        result = rename_table_column(
+            table_name=table_name,
+            old_name=payload.old_name,
+            new_name=payload.new_name,
+        )
+
+        return {
+            "status": "success",
+            "message": "Nama kolom berhasil diperbarui.",
+            **result,
+        }
+
+    except Exception as error:
+        print(
+            "ERROR PATCH /tables/{table_name}/column:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.patch("/tables/{table_name}/column-masking")
+def update_column_masking(
+    table_name: str,
+    payload: ColumnMaskingRequest,
+):
+    try:
+        result = set_column_masking(
+            table_name=table_name,
+            column_name=payload.column_name,
+            masked=payload.masked,
+        )
+
+        return {
+            "status": "success",
+            "message": (
+                "Masking kolom berhasil diperbarui."
+            ),
+            **result,
+        }
+
+    except Exception as error:
+        print(
+            "ERROR PATCH /tables/{table_name}/column-masking:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.get("/tables/{table_name}/explorer/options")
+def table_explorer_options(table_name: str):
+    try:
+        result = get_table_explorer_options(
+            table_name
+        )
+
+        return {
+            "status": "success",
+            **result,
+        }
+
+    except Exception as error:
+        print(
+            "ERROR /tables/{table_name}/explorer/options:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.get("/tables/{table_name}/explorer")
+def table_explorer(
+    table_name: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(
+        20,
+        ge=1,
+        le=200,
+    ),
+    search: str | None = Query(None),
+    bank_id: str | None = Query(None),
+    month: int | None = Query(
+        None,
+        ge=1,
+        le=12,
+    ),
+    year: int | None = Query(
+        None,
+        ge=1900,
+        le=2200,
+    ),
+    sort_column: str | None = Query(None),
+    sort_direction: str = Query("asc"),
+):
+    try:
+        result = explore_table_data(
+            table_name,
+            page=page,
+            page_size=page_size,
+            search=search,
+            bank_id=bank_id,
+            month=month,
+            year=year,
+            sort_column=sort_column,
+            sort_direction=sort_direction,
+        )
+
+        return {
+            "status": "success",
+            **result,
+        }
+
+    except Exception as error:
+        print(
+            "ERROR /tables/{table_name}/explorer:",
             repr(error),
         )
 
