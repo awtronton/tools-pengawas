@@ -1575,3 +1575,695 @@
     width: 82%;
   }
 }
+
+
+/* =========================================================
+   Step 6D — Visual SQL Builder Foundation
+   ========================================================= */
+
+.tp-sql-builder {
+  overflow: hidden;
+  border: 1px solid #e4e6eb;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow:
+    0 1px 2px rgba(17, 24, 39, 0.03),
+    0 3px 10px rgba(17, 24, 39, 0.02);
+}
+
+.tp-sql-builder-intro {
+  display: flex;
+  min-height: 78px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #eceef2;
+  padding: 14px 16px;
+}
+
+.tp-sql-builder-intro > div:first-child > span {
+  display: block;
+  margin-bottom: 3px;
+  color: #8d909b;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tp-sql-builder-intro h2 {
+  margin: 0;
+  color: #323338;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.tp-sql-builder-intro p {
+  margin: 4px 0 0;
+  max-width: 700px;
+  color: #858894;
+  font-size: 9px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.tp-sql-builder-stage {
+  flex: 0 0 auto;
+  border: 1px solid #d9e4f3;
+  border-radius: 999px;
+  background: #f4f8fd;
+  padding: 6px 9px;
+  color: #58728f;
+  font-size: 8px;
+  font-weight: 500;
+}
+
+.tp-sql-builder-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    390px;
+  min-height: 680px;
+}
+
+.tp-sql-builder-workspace {
+  min-width: 0;
+  border-right: 1px solid #e8eaee;
+  background: #fafbfc;
+}
+
+.tp-sql-section {
+  border-bottom: 1px solid #e7e9ed;
+  background: #fff;
+  padding: 15px 16px;
+}
+
+.tp-sql-section-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 13px;
+}
+
+.tp-sql-step-number {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  place-items: center;
+  border-radius: 7px;
+  background: #eaf3fe;
+  color: #1768a9;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.tp-sql-section-heading h3 {
+  margin: 0;
+  color: #42444d;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.tp-sql-section-heading p {
+  margin: 3px 0 0;
+  color: #9699a3;
+  font-size: 8px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.tp-sql-base-row {
+  display: grid;
+  grid-template-columns:
+    minmax(240px, 430px)
+    auto;
+  gap: 9px;
+  align-items: center;
+}
+
+.tp-sql-reset-button,
+.tp-sql-copy-button,
+.tp-sql-remove-join {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid #dfe1e6;
+  border-radius: 6px;
+  background: #fff;
+  color: #646771;
+  font-family: var(--tp-font-ui);
+  font-size: 8px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.tp-sql-reset-button {
+  height: 38px;
+  padding: 0 9px;
+}
+
+.tp-sql-reset-button:hover,
+.tp-sql-copy-button:hover:not(:disabled) {
+  background: #f5f6f8;
+  color: #323338;
+}
+
+.tp-sql-path {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 9px;
+}
+
+.tp-sql-path-table {
+  display: flex;
+  min-width: 138px;
+  min-height: 54px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #dee1e7;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 9px;
+}
+
+.tp-sql-path-table.is-base {
+  border-color: #cddff4;
+  background: #f6faff;
+}
+
+.tp-sql-path-table svg {
+  flex: 0 0 auto;
+  color: #7b7e88;
+}
+
+.tp-sql-path-table strong {
+  display: block;
+  max-width: 150px;
+  overflow: hidden;
+  color: #43454d;
+  font-size: 9px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp-sql-path-table span {
+  display: block;
+  margin-top: 2px;
+  color: #989ba4;
+  font-size: 7px;
+  font-weight: 400;
+}
+
+.tp-sql-join-step {
+  display: flex;
+  align-items: stretch;
+  gap: 7px;
+}
+
+.tp-sql-path-connector {
+  display: flex;
+  width: 70px;
+  flex: 0 0 70px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 2px;
+  color: #8b8e98;
+}
+
+.tp-sql-path-connector span {
+  color: #7d808b;
+  font-size: 6.5px;
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.tp-sql-join-card {
+  width: 260px;
+  flex: 0 0 260px;
+  overflow: hidden;
+  border: 1px solid #dfe1e6;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.tp-sql-join-card-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tp-sql-join-card-main
+  .tp-sql-path-table {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  border-radius: 0;
+}
+
+.tp-sql-remove-join {
+  width: 27px;
+  height: 27px;
+  flex: 0 0 27px;
+  margin-right: 7px;
+  border-color: transparent;
+  color: #a75564;
+}
+
+.tp-sql-remove-join:hover {
+  background: #fff1f3;
+}
+
+.tp-sql-join-condition {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  border-top: 1px solid #f0f1f3;
+  background: #fafbfc;
+  padding: 6px 8px;
+  color: #81848e;
+}
+
+.tp-sql-join-condition svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.tp-sql-join-condition span {
+  overflow: hidden;
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 6.5px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+}
+
+.tp-sql-join-type-row {
+  display: grid;
+  grid-template-columns:
+    112px
+    minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  border-top: 1px solid #f0f1f3;
+  padding: 7px;
+}
+
+.tp-sql-join-type-row small {
+  color: #9295a0;
+  font-size: 6.5px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.tp-sql-add-join {
+  display: grid;
+  grid-template-columns:
+    minmax(260px, 1fr)
+    160px
+    auto;
+  gap: 9px;
+  align-items: end;
+  border: 1px dashed #d8dbe2;
+  border-radius: 8px;
+  background: #fafbfc;
+  padding: 10px;
+}
+
+.tp-sql-add-join label {
+  display: block;
+  margin-bottom: 5px;
+  color: #757883;
+  font-size: 8px;
+  font-weight: 500;
+}
+
+.tp-sql-inline-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 9px;
+  border: 1px solid #ecd7af;
+  border-radius: 7px;
+  background: #fff9ef;
+  padding: 8px 9px;
+  color: #91601d;
+  font-size: 8px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.tp-sql-column-groups {
+  display: grid;
+  grid-template-columns:
+    repeat(
+      auto-fit,
+      minmax(230px, 1fr)
+    );
+  gap: 9px;
+}
+
+.tp-sql-column-group {
+  overflow: hidden;
+  border: 1px solid #e0e2e7;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.tp-sql-column-group-header {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  border-bottom: 1px solid #eceef2;
+  background: #f6f7f9;
+  padding: 6px 8px;
+}
+
+.tp-sql-column-group-header > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+}
+
+.tp-sql-column-group-header strong {
+  overflow: hidden;
+  color: #4a4c55;
+  font-size: 8px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp-sql-column-group-header span {
+  color: #9a9da7;
+  font-size: 6.5px;
+  white-space: nowrap;
+}
+
+.tp-sql-column-group-header button {
+  border: 0;
+  background: transparent;
+  color: #4677a2;
+  font-family: var(--tp-font-ui);
+  font-size: 7px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.tp-sql-column-list {
+  max-height: 250px;
+  overflow: auto;
+  padding: 4px;
+}
+
+.tp-sql-column-item {
+  display: grid;
+  width: 100%;
+  min-height: 29px;
+  grid-template-columns:
+    15px
+    minmax(0, 1fr)
+    72px;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  padding: 0 5px;
+  font-family: var(--tp-font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+
+.tp-sql-column-item:hover:not(:disabled) {
+  background: #f5f8fc;
+}
+
+.tp-sql-column-item.is-selected {
+  background: #edf5fe;
+}
+
+.tp-sql-column-item.is-masked {
+  background: #fff8fa;
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.tp-sql-column-checkbox {
+  display: grid;
+  width: 13px;
+  height: 13px;
+  place-items: center;
+  border: 1px solid #cfd3db;
+  border-radius: 3px;
+  background: #fff;
+  color: #fff;
+}
+
+.tp-sql-column-item.is-selected
+  .tp-sql-column-checkbox {
+  border-color: #0073ea;
+  background: #0073ea;
+}
+
+.tp-sql-column-item-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  color: #565963;
+  font-size: 7.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp-sql-column-item-name svg {
+  flex: 0 0 auto;
+  color: #a25c72;
+}
+
+.tp-sql-column-item small {
+  overflow: hidden;
+  color: #9a9da6;
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 6px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp-sql-loading {
+  margin-bottom: 8px;
+  color: #8d909b;
+  font-size: 8px;
+}
+
+.tp-sql-mask-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 9px;
+  border-radius: 7px;
+  background: #f7f4fb;
+  padding: 8px 9px;
+  color: #786789;
+  font-size: 7.5px;
+  line-height: 1.45;
+}
+
+.tp-sql-preview-panel {
+  position: relative;
+  min-width: 0;
+  background: #f7f8fa;
+}
+
+.tp-sql-preview-heading {
+  display: flex;
+  min-height: 55px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid #e4e6eb;
+  background: #fff;
+  padding: 8px 10px;
+}
+
+.tp-sql-preview-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tp-sql-preview-heading strong {
+  display: block;
+  color: #464850;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.tp-sql-preview-heading span {
+  display: block;
+  margin-top: 2px;
+  color: #9a9da6;
+  font-size: 6.5px;
+  font-weight: 400;
+}
+
+.tp-sql-copy-button {
+  height: 28px;
+  padding: 0 7px;
+}
+
+.tp-sql-copy-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.tp-sql-preview-summary {
+  display: grid;
+  grid-template-columns:
+    repeat(3, 1fr);
+  border-bottom: 1px solid #e6e8ed;
+  background: #fafbfc;
+}
+
+.tp-sql-preview-summary > div {
+  border-right: 1px solid #e8eaee;
+  padding: 7px 9px;
+}
+
+.tp-sql-preview-summary > div:last-child {
+  border-right: 0;
+}
+
+.tp-sql-preview-summary span {
+  display: block;
+  color: #989ba4;
+  font-size: 6.5px;
+}
+
+.tp-sql-preview-summary strong {
+  display: block;
+  margin-top: 2px;
+  color: #555862;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.tp-sql-code-preview {
+  min-height: 330px;
+  max-height: 510px;
+  overflow: auto;
+  margin: 0;
+  background: #20242c;
+  padding: 13px;
+  color: #e7eaf0;
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 8px;
+  font-weight: 400;
+  line-height: 1.65;
+  white-space: pre;
+}
+
+.tp-sql-preview-footer {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  border-bottom: 1px solid #e4e6eb;
+  background: #fff;
+  padding: 8px 9px;
+  color: #8c8f99;
+  font-size: 7px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.tp-sql-next-stage {
+  margin: 10px;
+  border: 1px solid #dde2e9;
+  border-radius: 8px;
+  background: #fff;
+  padding: 9px;
+}
+
+.tp-sql-next-stage > span {
+  color: #999ca5;
+  font-size: 6px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.tp-sql-next-stage strong {
+  display: block;
+  margin-top: 2px;
+  color: #545761;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.tp-sql-next-stage p {
+  margin: 3px 0 0;
+  color: #8c8f99;
+  font-size: 7px;
+  line-height: 1.4;
+}
+
+@media (max-width: 1180px) {
+  .tp-sql-builder-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tp-sql-builder-workspace {
+    border-right: 0;
+  }
+
+  .tp-sql-preview-panel {
+    border-top: 1px solid #e4e6eb;
+  }
+
+  .tp-sql-code-preview {
+    min-height: 230px;
+  }
+}
+
+@media (max-width: 760px) {
+  .tp-sql-builder-intro {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .tp-sql-base-row,
+  .tp-sql-add-join {
+    grid-template-columns: 1fr;
+  }
+
+  .tp-sql-column-groups {
+    grid-template-columns: 1fr;
+  }
+}

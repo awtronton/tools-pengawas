@@ -31,6 +31,7 @@ import DashboardLayout from '../layouts/DashboardLayout'
 import WorkspacePageHeader from '../components/ui/WorkspacePageHeader'
 import CardinalityHelper from '../components/schema/CardinalityHelper'
 import RelationshipCanvas from '../components/schema/RelationshipCanvas'
+import VisualSqlBuilder from '../components/schema/VisualSqlBuilder'
 import {
   createTableRelationship,
   deleteTableRelationship,
@@ -766,13 +767,18 @@ function SchemaManager() {
 
           <button
             type="button"
-            className="tp-schema-tab"
-            disabled
-            title="Dibangun setelah visual relationship canvas"
+            className={`tp-schema-tab ${
+              activeTab === 'sql'
+                ? 'is-active'
+                : ''
+            }`}
+            onClick={() =>
+              setActiveTab('sql')
+            }
           >
             <Workflow size={14} />
             Visual SQL Builder
-            <span>Planned</span>
+            <span>Foundation</span>
           </button>
         </nav>
 
@@ -1187,7 +1193,7 @@ function SchemaManager() {
               </footer>
             </section>
           </>
-        ) : (
+        ) : activeTab === 'relationships' ? (
           <section className="tp-relationship-workspace">
             <div className="tp-relationship-intro">
               <div>
@@ -1703,6 +1709,11 @@ function SchemaManager() {
               Key PostgreSQL.
             </div>
           </section>
+        ) : (
+          <VisualSqlBuilder
+            tables={tables}
+            relationships={relationships}
+          />
         )}
       </main>
     </DashboardLayout>
