@@ -47,6 +47,12 @@ from services.relationship_scoring_service import (
     queue_relationship_scoring_job,
     recover_relationship_scoring_queue,
 )
+from services.relationship_cardinality_service import (
+    get_relationship_cardinality_job_status,
+    list_relationship_cardinality_jobs,
+    queue_relationship_cardinality_job,
+    recover_relationship_cardinality_queue,
+)
 from services.relationship_intelligence_service import (
     get_relationship_candidate_job_status,
     list_relationship_candidate_jobs,
@@ -58,7 +64,7 @@ from services.relationship_intelligence_service import (
 
 app = FastAPI(
     title="OJK Data Warehouse API",
-    version="1.5.0",
+    version="1.6.0",
 )
 
 
@@ -138,6 +144,15 @@ class RelationshipScoringJobCreateRequest(BaseModel):
     target_tables: list[str] | None = None
     candidate_status: str = "pending"
     min_discovery_score: float = 0.45
+    max_candidates: int = 5000
+
+
+class RelationshipCardinalityJobCreateRequest(BaseModel):
+    source_tables: list[str] | None = None
+    target_tables: list[str] | None = None
+    candidate_status: str = "pending"
+    min_discovery_score: float = 0.45
+    min_quality_score: float = 0.55
     max_candidates: int = 5000
 
 
@@ -366,6 +381,21 @@ def recover_relationship_scoring_runtime():
             print(f"Recovered {recovered} relationship scoring job(s).")
     except Exception as error:
         print("WARNING relationship scoring queue recovery:", repr(error))
+
+
+@app.on_event("startup")
+def recover_relationship_cardinality_runtime():
+    try:
+        recovered = recover_relationship_cardinality_queue()
+        if recovered:
+            print(
+                f"Recovered {recovered} relationship cardinality job(s)."
+            )
+    except Exception as error:
+        print(
+            "WARNING relationship cardinality queue recovery:",
+            repr(error),
+        )
 
 
 # =====================================================
@@ -756,6 +786,54 @@ def relationship_scoring_jobs(limit: int = Query(50, ge=1, le=200)):
 def relationship_scoring_job(job_id: int):
     try:
         return {"status":"success","job":get_relationship_scoring_job_status(job_id)}
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+# =====================================================
+# RELATIONSHIP INTELLIGENCE — CARDINALITY ESTIMATION
+# =====================================================
+
+@app.post("/relationship-intelligence/cardinality-jobs")
+def create_relationship_cardinality_job(
+    payload: RelationshipCardinalityJobCreateRequest,
+):
+    try:
+        result = queue_relationship_cardinality_job(
+            source_tables=payload.source_tables,
+            target_tables=payload.target_tables,
+            candidate_status=payload.candidate_status,
+            min_discovery_score=payload.min_discovery_score,
+            min_quality_score=payload.min_quality_score,
+            max_candidates=payload.max_candidates,
+        )
+        return {"status": "success", **result}
+    except Exception as error:
+        print(
+            "ERROR POST /relationship-intelligence/cardinality-jobs:",
+            repr(error),
+        )
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@app.get("/relationship-intelligence/cardinality-jobs")
+def relationship_cardinality_jobs(
+    limit: int = Query(50, ge=1, le=200),
+):
+    try:
+        rows = list_relationship_cardinality_jobs(limit=limit)
+        return {"status": "success", "count": len(rows), "jobs": rows}
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@app.get("/relationship-intelligence/cardinality-jobs/{job_id}")
+def relationship_cardinality_job(job_id: int):
+    try:
+        return {
+            "status": "success",
+            "job": get_relationship_cardinality_job_status(job_id),
+        }
     except Exception as error:
         raise HTTPException(status_code=400, detail=str(error))
 

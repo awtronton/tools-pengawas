@@ -16,6 +16,7 @@ from database.table_service import (
     get_relationship_candidate_jobs,
     get_relationship_candidates,
     get_relationship_candidate_scores,
+    get_relationship_cardinality_estimates,
     update_relationship_candidate_job,
     upsert_relationship_candidate,
 )
@@ -677,7 +678,10 @@ def list_relationship_candidates(
         min_discovery_score=min_discovery_score,
         limit=limit,
     )
-    scores = get_relationship_candidate_scores([row["id"] for row in rows])
+    candidate_ids = [row["id"] for row in rows]
+    scores = get_relationship_candidate_scores(candidate_ids)
+    cardinalities = get_relationship_cardinality_estimates(candidate_ids)
     for row in rows:
         row["quality_score"] = scores.get(row["id"])
+        row["cardinality_estimate"] = cardinalities.get(row["id"])
     return rows

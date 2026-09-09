@@ -39,6 +39,8 @@ RELATIONSHIP_CANDIDATES_TABLE_NAME = "warehouse_relationship_candidates"
 RELATIONSHIP_CANDIDATE_JOBS_TABLE_NAME = "warehouse_relationship_candidate_jobs"
 RELATIONSHIP_CANDIDATE_SCORES_TABLE_NAME = "warehouse_relationship_candidate_scores"
 RELATIONSHIP_SCORING_JOBS_TABLE_NAME = "warehouse_relationship_scoring_jobs"
+RELATIONSHIP_CARDINALITY_ESTIMATES_TABLE_NAME = "warehouse_relationship_cardinality_estimates"
+RELATIONSHIP_CARDINALITY_JOBS_TABLE_NAME = "warehouse_relationship_cardinality_jobs"
 MASK_VALUE = "••••••••"
 PROFILE_JOB_STATUSES = {
     "queued",
@@ -53,6 +55,9 @@ RELATIONSHIP_CANDIDATE_JOB_STATUSES = {
     "failed",
 }
 RELATIONSHIP_SCORING_JOB_STATUSES = {
+    "queued", "running", "completed", "failed",
+}
+RELATIONSHIP_CARDINALITY_JOB_STATUSES = {
     "queued", "running", "completed", "failed",
 }
 RELATIONSHIP_CANDIDATE_STATUSES = {
@@ -79,6 +84,8 @@ INTERNAL_TABLES = {
     RELATIONSHIP_CANDIDATE_JOBS_TABLE_NAME,
     RELATIONSHIP_CANDIDATE_SCORES_TABLE_NAME,
     RELATIONSHIP_SCORING_JOBS_TABLE_NAME,
+    RELATIONSHIP_CARDINALITY_ESTIMATES_TABLE_NAME,
+    RELATIONSHIP_CARDINALITY_JOBS_TABLE_NAME,
 }
 
 
@@ -390,6 +397,63 @@ relationship_scoring_jobs_table = Table(
 )
 
 
+relationship_cardinality_estimates_table = Table(
+    RELATIONSHIP_CARDINALITY_ESTIMATES_TABLE_NAME,
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("candidate_id", Integer, nullable=False, unique=True),
+    Column("candidate_key", String(64), nullable=False),
+    Column("estimation_version", String(48), nullable=False),
+    Column("source_profile_version", Integer, nullable=False),
+    Column("target_profile_version", Integer, nullable=False),
+    Column("source_data_version", BigInteger, nullable=False),
+    Column("target_data_version", BigInteger, nullable=False),
+    Column("source_role", String(24), nullable=False),
+    Column("target_role", String(24), nullable=False),
+    Column("source_role_confidence", Float, nullable=False, default=0.0),
+    Column("target_role_confidence", Float, nullable=False, default=0.0),
+    Column("estimated_cardinality", String(32), nullable=False),
+    Column("cardinality_confidence", Float, nullable=False, default=0.0),
+    Column("evidence", JSON, nullable=True),
+    Column("quality_flags", JSON, nullable=True),
+    Column("requires_review", Boolean, nullable=False, default=True),
+    Column("is_stale", Boolean, nullable=False, default=False),
+    Column("stale_reason", String(255), nullable=True),
+    Column("last_estimated_job_id", Integer, nullable=True),
+    Column("created_at", DateTime, nullable=False, server_default=func.now()),
+    Column(
+        "updated_at",
+        DateTime,
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    ),
+)
+
+
+relationship_cardinality_jobs_table = Table(
+    RELATIONSHIP_CARDINALITY_JOBS_TABLE_NAME,
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("status", String(24), nullable=False),
+    Column("source_tables", JSON, nullable=True),
+    Column("target_tables", JSON, nullable=True),
+    Column("candidate_status", String(24), nullable=True),
+    Column("min_discovery_score", Float, nullable=False, default=0.45),
+    Column("min_quality_score", Float, nullable=False, default=0.0),
+    Column("max_candidates", Integer, nullable=False, default=5000),
+    Column("candidate_count", Integer, nullable=False, default=0),
+    Column("estimated_count", Integer, nullable=False, default=0),
+    Column("skipped_count", Integer, nullable=False, default=0),
+    Column("worker_backend", String(32), nullable=False, default="in_process_v1"),
+    Column("created_at", DateTime, nullable=False, server_default=func.now()),
+    Column("started_at", DateTime, nullable=True),
+    Column("finished_at", DateTime, nullable=True),
+    Column("error_message", Text, nullable=True),
+    Column("result_summary", JSON, nullable=True),
+)
+
+
 Index(
     "ix_column_profiles_table_stale",
     column_profiles_table.c.table_name,
@@ -426,6 +490,20 @@ Index(
     "ix_relationship_candidate_scores_confidence",
     relationship_candidate_scores_table.c.is_stale,
     relationship_candidate_scores_table.c.confidence_score,
+)
+
+
+Index(
+    "ix_relationship_cardinality_estimates_cardinality",
+    relationship_cardinality_estimates_table.c.is_stale,
+    relationship_cardinality_estimates_table.c.estimated_cardinality,
+    relationship_cardinality_estimates_table.c.cardinality_confidence,
+)
+
+Index(
+    "ix_relationship_cardinality_jobs_status",
+    relationship_cardinality_jobs_table.c.status,
+    relationship_cardinality_jobs_table.c.id,
 )
 
 Index(
@@ -491,6 +569,8 @@ def ensure_internal_tables():
             relationship_candidate_jobs_table,
             relationship_candidate_scores_table,
             relationship_scoring_jobs_table,
+            relationship_cardinality_estimates_table,
+            relationship_cardinality_jobs_table,
         ],
     )
     _backfill_relationship_columns()
@@ -615,12 +695,46 @@ def mark_table_profile_stale(
                 stale_reason=reason,
             )
         )
+        candidate_ids = select(
+            relationship_candidates_table.c.id
+        ).where(
+            or_(
+                relationship_candidates_table.c.source_table == table_name,
+                relationship_candidates_table.c.target_table == table_name,
+            )
+        )
         connection.execute(
             relationship_candidates_table.update()
             .where(
                 or_(
                     relationship_candidates_table.c.source_table == table_name,
                     relationship_candidates_table.c.target_table == table_name,
+                )
+            )
+            .values(
+                is_stale=True,
+                stale_reason=reason,
+                updated_at=func.now(),
+            )
+        )
+        connection.execute(
+            relationship_candidate_scores_table.update()
+            .where(
+                relationship_candidate_scores_table.c.candidate_id.in_(
+                    candidate_ids
+                )
+            )
+            .values(
+                is_stale=True,
+                stale_reason=reason,
+                updated_at=func.now(),
+            )
+        )
+        connection.execute(
+            relationship_cardinality_estimates_table.update()
+            .where(
+                relationship_cardinality_estimates_table.c.candidate_id.in_(
+                    candidate_ids
                 )
             )
             .values(
@@ -1296,8 +1410,29 @@ def mark_relationship_candidates_stale_for_table(
         )
         conn.execute(
             relationship_candidate_scores_table.update()
-            .where(relationship_candidate_scores_table.c.candidate_id.in_(candidate_ids))
-            .values(is_stale=True, stale_reason=reason, updated_at=func.now())
+            .where(
+                relationship_candidate_scores_table.c.candidate_id.in_(
+                    candidate_ids
+                )
+            )
+            .values(
+                is_stale=True,
+                stale_reason=reason,
+                updated_at=func.now(),
+            )
+        )
+        conn.execute(
+            relationship_cardinality_estimates_table.update()
+            .where(
+                relationship_cardinality_estimates_table.c.candidate_id.in_(
+                    candidate_ids
+                )
+            )
+            .values(
+                is_stale=True,
+                stale_reason=reason,
+                updated_at=func.now(),
+            )
         )
         return int(candidate_result.rowcount or 0)
 
@@ -1803,6 +1938,393 @@ def get_recoverable_relationship_scoring_jobs():
         connection.execute(relationship_scoring_jobs_table.update().where(relationship_scoring_jobs_table.c.status=="running").values(status="queued", started_at=None, finished_at=None, error_message="Worker restart terdeteksi; scoring job diantrikan kembali."))
         rows=connection.execute(select(relationship_scoring_jobs_table.c.id).where(relationship_scoring_jobs_table.c.status=="queued").order_by(relationship_scoring_jobs_table.c.id)).scalars().all()
     return [int(v) for v in rows]
+
+
+# =====================================================
+# RELATIONSHIP CARDINALITY ESTIMATION METADATA
+# =====================================================
+
+def _serialize_relationship_cardinality_estimate(row):
+    if row is None:
+        return None
+    return {
+        "id": int(row["id"]),
+        "candidate_id": int(row["candidate_id"]),
+        "candidate_key": row["candidate_key"],
+        "estimation_version": row["estimation_version"],
+        "source_profile_version": int(row["source_profile_version"]),
+        "target_profile_version": int(row["target_profile_version"]),
+        "source_data_version": int(row["source_data_version"]),
+        "target_data_version": int(row["target_data_version"]),
+        "source_role": row["source_role"],
+        "target_role": row["target_role"],
+        "source_role_confidence": round(
+            float(row["source_role_confidence"] or 0.0), 6
+        ),
+        "target_role_confidence": round(
+            float(row["target_role_confidence"] or 0.0), 6
+        ),
+        "estimated_cardinality": row["estimated_cardinality"],
+        "cardinality_confidence": round(
+            float(row["cardinality_confidence"] or 0.0), 6
+        ),
+        "evidence": row["evidence"] or {},
+        "quality_flags": row["quality_flags"] or [],
+        "requires_review": bool(row["requires_review"]),
+        "is_stale": bool(row["is_stale"]),
+        "stale_reason": row["stale_reason"],
+        "last_estimated_job_id": (
+            int(row["last_estimated_job_id"])
+            if row["last_estimated_job_id"] is not None
+            else None
+        ),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def upsert_relationship_cardinality_estimate(estimate: dict):
+    ensure_internal_tables()
+    candidate_id = int(estimate["candidate_id"])
+    cardinality = str(estimate["estimated_cardinality"]).strip().lower()
+    if cardinality not in RELATIONSHIP_CARDINALITIES:
+        raise ValueError("Estimasi cardinality tidak valid.")
+
+    source_role = str(estimate["source_role"]).strip().lower()
+    target_role = str(estimate["target_role"]).strip().lower()
+    if source_role not in {"one", "many"} or target_role not in {"one", "many"}:
+        raise ValueError("Role cardinality harus 'one' atau 'many'.")
+
+    values = {
+        "candidate_id": candidate_id,
+        "candidate_key": str(estimate["candidate_key"]),
+        "estimation_version": str(estimate["estimation_version"])[:48],
+        "source_profile_version": int(estimate["source_profile_version"]),
+        "target_profile_version": int(estimate["target_profile_version"]),
+        "source_data_version": int(estimate["source_data_version"]),
+        "target_data_version": int(estimate["target_data_version"]),
+        "source_role": source_role,
+        "target_role": target_role,
+        "source_role_confidence": max(
+            0.0, min(float(estimate["source_role_confidence"]), 1.0)
+        ),
+        "target_role_confidence": max(
+            0.0, min(float(estimate["target_role_confidence"]), 1.0)
+        ),
+        "estimated_cardinality": cardinality,
+        "cardinality_confidence": max(
+            0.0, min(float(estimate["cardinality_confidence"]), 1.0)
+        ),
+        "evidence": estimate.get("evidence") or {},
+        "quality_flags": estimate.get("quality_flags") or [],
+        "requires_review": bool(estimate.get("requires_review", True)),
+        "is_stale": False,
+        "stale_reason": None,
+        "last_estimated_job_id": int(estimate["last_estimated_job_id"]),
+        "updated_at": func.now(),
+    }
+
+    with engine.begin() as connection:
+        current = connection.execute(
+            select(relationship_cardinality_estimates_table).where(
+                relationship_cardinality_estimates_table.c.candidate_id
+                == candidate_id
+            )
+        ).mappings().one_or_none()
+
+        if current is None:
+            result = connection.execute(
+                relationship_cardinality_estimates_table.insert().values(
+                    **values
+                )
+            )
+            estimate_id = int(result.inserted_primary_key[0])
+        else:
+            estimate_id = int(current["id"])
+            connection.execute(
+                relationship_cardinality_estimates_table.update()
+                .where(
+                    relationship_cardinality_estimates_table.c.id
+                    == estimate_id
+                )
+                .values(**values)
+            )
+
+        row = connection.execute(
+            select(relationship_cardinality_estimates_table).where(
+                relationship_cardinality_estimates_table.c.id == estimate_id
+            )
+        ).mappings().one()
+
+    return _serialize_relationship_cardinality_estimate(row)
+
+
+def get_relationship_cardinality_estimates(candidate_ids):
+    ensure_internal_tables()
+    ids = sorted({int(value) for value in (candidate_ids or [])})
+    if not ids:
+        return {}
+
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(relationship_cardinality_estimates_table).where(
+                relationship_cardinality_estimates_table.c.candidate_id.in_(
+                    ids
+                )
+            )
+        ).mappings().all()
+
+    return {
+        int(row["candidate_id"]): _serialize_relationship_cardinality_estimate(
+            row
+        )
+        for row in rows
+    }
+
+
+def _serialize_relationship_cardinality_job(row):
+    if row is None:
+        return None
+    return {
+        "id": int(row["id"]),
+        "status": row["status"],
+        "source_tables": row["source_tables"] or [],
+        "target_tables": row["target_tables"] or [],
+        "candidate_status": row["candidate_status"],
+        "min_discovery_score": round(
+            float(row["min_discovery_score"] or 0.0), 6
+        ),
+        "min_quality_score": round(
+            float(row["min_quality_score"] or 0.0), 6
+        ),
+        "max_candidates": int(row["max_candidates"] or 0),
+        "candidate_count": int(row["candidate_count"] or 0),
+        "estimated_count": int(row["estimated_count"] or 0),
+        "skipped_count": int(row["skipped_count"] or 0),
+        "worker_backend": row["worker_backend"],
+        "created_at": row["created_at"],
+        "started_at": row["started_at"],
+        "finished_at": row["finished_at"],
+        "error_message": row["error_message"],
+        "result_summary": row["result_summary"],
+    }
+
+
+def create_relationship_cardinality_job_record(
+    *,
+    source_tables=None,
+    target_tables=None,
+    candidate_status="pending",
+    min_discovery_score=0.45,
+    min_quality_score=0.0,
+    max_candidates=5000,
+):
+    ensure_internal_tables()
+    sources = _normalize_candidate_job_tables(source_tables)
+    targets = _normalize_candidate_job_tables(target_tables)
+
+    candidate_status = str(candidate_status or "pending").strip().lower()
+    if candidate_status not in RELATIONSHIP_CANDIDATE_STATUSES:
+        raise ValueError("candidate_status tidak valid.")
+
+    min_discovery_score = max(
+        0.0, min(float(min_discovery_score), 1.0)
+    )
+    min_quality_score = max(0.0, min(float(min_quality_score), 1.0))
+    max_candidates = int(max_candidates)
+    if max_candidates < 1 or max_candidates > 10000:
+        raise ValueError("max_candidates harus 1-10.000.")
+
+    with engine.begin() as connection:
+        if engine.dialect.name == "postgresql":
+            connection.execute(
+                text(
+                    "SELECT pg_advisory_xact_lock(hashtext(:lock_key))"
+                ),
+                {"lock_key": "relationship_cardinality_job_queue"},
+            )
+
+        active = connection.execute(
+            select(relationship_cardinality_jobs_table).where(
+                relationship_cardinality_jobs_table.c.status.in_(
+                    ["queued", "running"]
+                )
+            )
+        ).mappings().all()
+
+        for row in active:
+            same_scope = (
+                (row["source_tables"] or []) == sources
+                and (row["target_tables"] or []) == targets
+                and row["candidate_status"] == candidate_status
+                and abs(
+                    float(row["min_discovery_score"])
+                    - min_discovery_score
+                )
+                < 1e-9
+                and abs(
+                    float(row["min_quality_score"])
+                    - min_quality_score
+                )
+                < 1e-9
+                and int(row["max_candidates"]) == max_candidates
+            )
+            if same_scope:
+                return _serialize_relationship_cardinality_job(row), False
+
+        result = connection.execute(
+            relationship_cardinality_jobs_table.insert().values(
+                status="queued",
+                source_tables=sources,
+                target_tables=targets,
+                candidate_status=candidate_status,
+                min_discovery_score=min_discovery_score,
+                min_quality_score=min_quality_score,
+                max_candidates=max_candidates,
+                worker_backend="in_process_v1",
+            )
+        )
+        job_id = int(result.inserted_primary_key[0])
+        row = connection.execute(
+            select(relationship_cardinality_jobs_table).where(
+                relationship_cardinality_jobs_table.c.id == job_id
+            )
+        ).mappings().one()
+
+    return _serialize_relationship_cardinality_job(row), True
+
+
+def get_relationship_cardinality_job(job_id: int):
+    ensure_internal_tables()
+    with engine.connect() as connection:
+        row = connection.execute(
+            select(relationship_cardinality_jobs_table).where(
+                relationship_cardinality_jobs_table.c.id == int(job_id)
+            )
+        ).mappings().one_or_none()
+    if row is None:
+        raise ValueError("Relationship cardinality job tidak ditemukan.")
+    return _serialize_relationship_cardinality_job(row)
+
+
+def get_relationship_cardinality_jobs(*, limit=50):
+    ensure_internal_tables()
+    limit = max(1, min(int(limit), 200))
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(relationship_cardinality_jobs_table)
+            .order_by(relationship_cardinality_jobs_table.c.id.desc())
+            .limit(limit)
+        ).mappings().all()
+    return [_serialize_relationship_cardinality_job(row) for row in rows]
+
+
+def claim_relationship_cardinality_job(job_id: int):
+    ensure_internal_tables()
+    job_id = int(job_id)
+    with engine.begin() as connection:
+        result = connection.execute(
+            relationship_cardinality_jobs_table.update()
+            .where(
+                relationship_cardinality_jobs_table.c.id == job_id,
+                relationship_cardinality_jobs_table.c.status == "queued",
+            )
+            .values(
+                status="running",
+                started_at=func.now(),
+                finished_at=None,
+                error_message=None,
+            )
+        )
+        if not result.rowcount:
+            return None
+        row = connection.execute(
+            select(relationship_cardinality_jobs_table).where(
+                relationship_cardinality_jobs_table.c.id == job_id
+            )
+        ).mappings().one()
+    return _serialize_relationship_cardinality_job(row)
+
+
+def update_relationship_cardinality_job(
+    job_id: int,
+    *,
+    status=None,
+    candidate_count=None,
+    estimated_count=None,
+    skipped_count=None,
+    result_summary=None,
+    error_message=None,
+):
+    ensure_internal_tables()
+    values = {}
+
+    if status is not None:
+        status = str(status).strip().lower()
+        if status not in RELATIONSHIP_CARDINALITY_JOB_STATUSES:
+            raise ValueError("Status relationship cardinality job tidak valid.")
+        values["status"] = status
+        if status == "running":
+            values.update(
+                started_at=func.now(),
+                finished_at=None,
+                error_message=None,
+            )
+        elif status in {"completed", "failed"}:
+            values["finished_at"] = func.now()
+
+    for field, value in {
+        "candidate_count": candidate_count,
+        "estimated_count": estimated_count,
+        "skipped_count": skipped_count,
+    }.items():
+        if value is not None:
+            values[field] = max(0, int(value))
+
+    if result_summary is not None:
+        values["result_summary"] = result_summary
+    if error_message is not None:
+        values["error_message"] = str(error_message)[:8000]
+
+    if not values:
+        return get_relationship_cardinality_job(job_id)
+
+    with engine.begin() as connection:
+        result = connection.execute(
+            relationship_cardinality_jobs_table.update()
+            .where(
+                relationship_cardinality_jobs_table.c.id == int(job_id)
+            )
+            .values(**values)
+        )
+        if not result.rowcount:
+            raise ValueError("Relationship cardinality job tidak ditemukan.")
+
+    return get_relationship_cardinality_job(job_id)
+
+
+def get_recoverable_relationship_cardinality_jobs():
+    ensure_internal_tables()
+    with engine.begin() as connection:
+        connection.execute(
+            relationship_cardinality_jobs_table.update()
+            .where(relationship_cardinality_jobs_table.c.status == "running")
+            .values(
+                status="queued",
+                started_at=None,
+                finished_at=None,
+                error_message=(
+                    "Worker restart terdeteksi; cardinality job "
+                    "diantrikan kembali."
+                ),
+            )
+        )
+        rows = connection.execute(
+            select(relationship_cardinality_jobs_table.c.id)
+            .where(relationship_cardinality_jobs_table.c.status == "queued")
+            .order_by(relationship_cardinality_jobs_table.c.id)
+        ).scalars().all()
+    return [int(value) for value in rows]
 
 
 # =====================================================
