@@ -1,4 +1,9 @@
 import re
+from contextlib import nullcontext
+
+from services.relationship_freshness_service import (
+    material_signature, quality_signature, candidate_signature, validate_freshness, VERSION_FIELDS,
+)
 
 import pandas as pd
 from sqlalchemy import (
@@ -41,6 +46,8 @@ RELATIONSHIP_CANDIDATE_SCORES_TABLE_NAME = "warehouse_relationship_candidate_sco
 RELATIONSHIP_SCORING_JOBS_TABLE_NAME = "warehouse_relationship_scoring_jobs"
 RELATIONSHIP_CARDINALITY_ESTIMATES_TABLE_NAME = "warehouse_relationship_cardinality_estimates"
 RELATIONSHIP_CARDINALITY_JOBS_TABLE_NAME = "warehouse_relationship_cardinality_jobs"
+RELATIONSHIP_REVIEWS_TABLE_NAME = "warehouse_relationship_reviews"
+RELATIONSHIP_REVIEW_CANDIDATES_TABLE_NAME = "warehouse_relationship_review_candidates"
 MASK_VALUE = "••••••••"
 PROFILE_JOB_STATUSES = {
     "queued",
@@ -86,6 +93,8 @@ INTERNAL_TABLES = {
     RELATIONSHIP_SCORING_JOBS_TABLE_NAME,
     RELATIONSHIP_CARDINALITY_ESTIMATES_TABLE_NAME,
     RELATIONSHIP_CARDINALITY_JOBS_TABLE_NAME,
+    RELATIONSHIP_REVIEWS_TABLE_NAME,
+    RELATIONSHIP_REVIEW_CANDIDATES_TABLE_NAME,
 }
 
 
@@ -454,6 +463,33 @@ relationship_cardinality_jobs_table = Table(
 )
 
 
+# Append-only decision ledger. No cascading relationship FK: audit survives deletion.
+relationship_reviews_table = Table(
+    RELATIONSHIP_REVIEWS_TABLE_NAME, metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("request_key", String(64), nullable=False, unique=True),
+    Column("request_digest", String(64), nullable=False),
+    Column("reviewed_by", String(180), nullable=False),
+    Column("reviewer_source", String(48), nullable=False),
+    Column("reviewed_at", DateTime, nullable=False, server_default=func.now()),
+    Column("review_note", Text, nullable=False),
+    Column("decision", String(24), nullable=False),
+    Column("promoted_relationship_id", Integer, nullable=True),
+    Column("snapshot", JSON, nullable=False),
+    Column("confirmation", JSON, nullable=False),
+)
+relationship_review_candidates_table = Table(
+    RELATIONSHIP_REVIEW_CANDIDATES_TABLE_NAME, metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("review_id", Integer, nullable=False),
+    Column("candidate_id", Integer, nullable=False),
+    Column("material_signature", String(64), nullable=False),
+    UniqueConstraint("review_id", "candidate_id", name="uq_review_candidate"),
+)
+Index("ix_review_candidates_history", relationship_review_candidates_table.c.candidate_id,
+      relationship_review_candidates_table.c.review_id)
+
+
 Index(
     "ix_column_profiles_table_stale",
     column_profiles_table.c.table_name,
@@ -571,6 +607,8 @@ def ensure_internal_tables():
             relationship_scoring_jobs_table,
             relationship_cardinality_estimates_table,
             relationship_cardinality_jobs_table,
+            relationship_reviews_table,
+            relationship_review_candidates_table,
         ],
     )
     _backfill_relationship_columns()
@@ -579,6 +617,84 @@ def ensure_internal_tables():
 # =====================================================
 # COLUMN PROFILING METADATA
 # =====================================================
+
+def lock_relationship_tables(connection, table_names):
+    if connection.dialect.name == "postgresql":
+        for table_name in sorted(set(table_names)):
+            connection.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+                               {"key": "relationship_evidence:" + table_name})
+
+
+def _invalidate_analysis(connection, table_name, reason):
+    candidate_ids = select(relationship_candidates_table.c.id).where(or_(
+        relationship_candidates_table.c.source_table == table_name,
+        relationship_candidates_table.c.target_table == table_name,
+    ))
+    for table in (relationship_candidate_scores_table, relationship_cardinality_estimates_table):
+        connection.execute(table.update().where(table.c.candidate_id.in_(candidate_ids)).values(
+            is_stale=True, stale_reason=reason, updated_at=func.now()))
+    connection.execute(relationship_candidates_table.update().where(
+        relationship_candidates_table.c.id.in_(candidate_ids)).values(
+            is_stale=True, stale_reason=reason, updated_at=func.now()))
+
+
+def _validate_analysis_write(connection, analysis):
+    candidate = connection.execute(select(relationship_candidates_table).where(
+        relationship_candidates_table.c.id == analysis["candidate_id"])).mappings().one_or_none()
+    if candidate is None:
+        raise ValueError("Candidate tidak ditemukan.")
+    lock_relationship_tables(connection, [candidate["source_table"], candidate["target_table"]])
+    candidate = dict(connection.execute(select(relationship_candidates_table).where(
+        relationship_candidates_table.c.id == analysis["candidate_id"])).mappings().one())
+    _validate_candidate_write(connection, candidate)
+    if analysis["candidate_key"] != candidate["candidate_key"] or any(
+        analysis[k] != candidate[k] for k in VERSION_FIELDS
+    ):
+        raise ValueError("Evidence berubah saat analisis. Jalankan analisis ulang.")
+    lineage = analysis.get("rationale") if "rationale" in analysis else analysis.get("evidence")
+    if (lineage or {}).get("candidate_signature") != candidate_signature(candidate):
+        raise ValueError("Candidate evidence berubah saat analisis. Jalankan analisis ulang.")
+    return candidate
+
+
+def _validate_candidate_write(connection, candidate):
+    tables = [candidate["source_table"], candidate["target_table"]]
+    lock_relationship_tables(connection, tables)
+    rows = connection.execute(select(column_profiles_table).where(
+        or_(*[(column_profiles_table.c.table_name == candidate[side + "_table"]) &
+              (column_profiles_table.c.column_name == candidate[side + "_column"])
+              for side in ("source", "target")]))).mappings().all()
+    profiles = {(r["table_name"], r["column_name"]): r for r in rows}
+    versions = dict(connection.execute(select(table_state_table.c.table_name,
+        table_state_table.c.data_version).where(table_state_table.c.table_name.in_(tables))).all())
+    freshness = validate_freshness(candidate, profiles, versions, require_analysis=False)
+    if not freshness["is_fresh"]:
+        raise ValueError("Evidence sudah stale: " + ", ".join(freshness["reasons"]))
+
+
+def _assert_no_relationship_duplicate(connection, source_table, target_table, pairs, exclude_id=None):
+    lock_relationship_tables(connection, [source_table, target_table])
+    rows = connection.execute(select(relationships_table).where(
+        relationships_table.c.is_active.is_(True),
+        or_((relationships_table.c.source_table == source_table) &
+            (relationships_table.c.target_table == target_table),
+            (relationships_table.c.source_table == target_table) &
+            (relationships_table.c.target_table == source_table)),
+    )).mappings().all()
+    signature = _relationship_pair_signature(pairs)
+    for row in rows:
+        if row["id"] == exclude_id:
+            continue
+        existing = _relationship_pair_rows(row["id"], connection=connection) or [row]
+        if row["source_table"] == source_table and row["target_table"] == target_table:
+            match = _relationship_pair_signature(existing) == signature
+        else:
+            match = False
+        if row["source_table"] == target_table and row["target_table"] == source_table:
+            match = match or tuple(sorted((p["target_column"], p["source_column"]) for p in existing)) == signature
+        if match:
+            raise ValueError("Relationship untuk pasangan kolom tersebut sudah tersedia.")
+
 
 def _serialize_profile_row(row):
     return {
@@ -687,6 +803,7 @@ def mark_table_profile_stale(
     reason = str(reason or "table_data_changed").strip()[:255]
 
     with engine.begin() as connection:
+        lock_relationship_tables(connection, [table_name])
         result = connection.execute(
             column_profiles_table.update()
             .where(column_profiles_table.c.table_name == table_name)
@@ -768,6 +885,7 @@ def upsert_column_profile(profile: dict):
     column_name = validate_column_name(profile["column_name"])
 
     with engine.begin() as connection:
+        lock_relationship_tables(connection, [table_name])
         current = connection.execute(
             select(column_profiles_table).where(
                 column_profiles_table.c.table_name == table_name,
@@ -822,6 +940,7 @@ def upsert_column_profile(profile: dict):
                 .values(**values)
             )
 
+        _invalidate_analysis(connection, table_name, "profile_updated")
         row = connection.execute(
             select(column_profiles_table).where(
                 column_profiles_table.c.id == profile_id
@@ -1290,6 +1409,7 @@ def upsert_relationship_candidate(candidate: dict):
     }
 
     with engine.begin() as connection:
+        _validate_candidate_write(connection, values)
         current = connection.execute(
             select(relationship_candidates_table).where(
                 relationship_candidates_table.c.candidate_key == candidate_key
@@ -1311,6 +1431,21 @@ def upsert_relationship_candidate(candidate: dict):
                 if current["status"] in {"rejected", "promoted"}
                 else "pending"
             )
+            if current["status"] == "rejected":
+                rejected_signature = connection.execute(select(
+                    relationship_review_candidates_table.c.material_signature).join(relationship_reviews_table,
+                        relationship_reviews_table.c.id == relationship_review_candidates_table.c.review_id).where(
+                            relationship_review_candidates_table.c.candidate_id == candidate_id,
+                            relationship_reviews_table.c.decision == "rejected").order_by(
+                                relationship_reviews_table.c.id.desc()).limit(1)).scalar_one_or_none()
+                if (rejected_signature or material_signature(current)) != material_signature(values):
+                    values["status"] = "pending"
+            if any(current[k] != values[k] for k in VERSION_FIELDS) or any(
+                current[k] != values[k] for k in ("source_table", "source_column", "target_table", "target_column", "evidence", "detector_version")
+            ):
+                for table in (relationship_candidate_scores_table, relationship_cardinality_estimates_table):
+                    connection.execute(table.update().where(table.c.candidate_id == candidate_id).values(
+                        is_stale=True, stale_reason="candidate_reanalysed", updated_at=func.now()))
             connection.execute(
                 relationship_candidates_table.update()
                 .where(relationship_candidates_table.c.id == candidate_id)
@@ -1358,6 +1493,9 @@ def get_relationship_candidates(
         statement = statement.where(
             relationship_candidates_table.c.status == status
         )
+    if not status:
+        # Reviewed candidates remain available through explicit status filters/history.
+        statement = statement.where(relationship_candidates_table.c.status.notin_(["rejected", "promoted"]))
     if not include_stale:
         statement = statement.where(
             relationship_candidates_table.c.is_stale.is_(False)
@@ -1392,6 +1530,7 @@ def mark_relationship_candidates_stale_for_table(
     reason = str(reason or "table_profile_changed").strip()[:255]
 
     def apply(conn):
+        lock_relationship_tables(conn, [table_name])
         candidate_ids = select(relationship_candidates_table.c.id).where(
             or_(
                 relationship_candidates_table.c.source_table == table_name,
@@ -1804,6 +1943,10 @@ def upsert_relationship_candidate_score(score: dict):
         "updated_at": func.now(),
     }
     with engine.begin() as connection:
+        _validate_analysis_write(connection, score)
+        connection.execute(relationship_cardinality_estimates_table.update().where(
+            relationship_cardinality_estimates_table.c.candidate_id == candidate_id).values(
+                is_stale=True, stale_reason="quality_rescored", updated_at=func.now()))
         current = connection.execute(select(relationship_candidate_scores_table).where(relationship_candidate_scores_table.c.candidate_id == candidate_id)).mappings().one_or_none()
         if current is None:
             result = connection.execute(relationship_candidate_scores_table.insert().values(**values))
@@ -2025,6 +2168,12 @@ def upsert_relationship_cardinality_estimate(estimate: dict):
     }
 
     with engine.begin() as connection:
+        _validate_analysis_write(connection, estimate)
+        score_row = connection.execute(select(relationship_candidate_scores_table).where(
+            relationship_candidate_scores_table.c.candidate_id == candidate_id)).mappings().one_or_none()
+        current_score = _serialize_relationship_candidate_score(score_row)
+        if (estimate.get("evidence") or {}).get("quality_score_signature") != quality_signature(current_score):
+            raise ValueError("Quality score berubah saat estimasi. Jalankan cardinality ulang.")
         current = connection.execute(
             select(relationship_cardinality_estimates_table).where(
                 relationship_cardinality_estimates_table.c.candidate_id
@@ -2786,6 +2935,7 @@ def append_existing_table(
     )
 
     with engine.begin() as connection:
+        lock_relationship_tables(connection, [table_name])
         df.to_sql(
             name=table_name,
             con=connection,
@@ -2845,6 +2995,7 @@ def replace_period_data(
     )
 
     with engine.begin() as connection:
+        lock_relationship_tables(connection, [table_name])
         delete_result = connection.execute(
             delete_statement
         )
@@ -2939,6 +3090,7 @@ def set_column_masking(
     ensure_internal_tables()
 
     with engine.begin() as connection:
+        lock_relationship_tables(connection, [table_name])
         existing_id = connection.execute(
             select(
                 column_settings_table.c.id
@@ -3138,6 +3290,8 @@ def rename_table_column(
     ensure_internal_tables()
 
     with engine.begin() as connection:
+        lock_relationship_tables(connection, [table_name])
+        _invalidate_analysis(connection, table_name, "column_renamed")
         connection.execute(
             text(
                 f"ALTER TABLE {quoted_table} "
@@ -3292,13 +3446,14 @@ def rename_table_column(
 def _get_column_metadata(
     table_name: str,
     column_name: str,
+    connection=None,
 ):
     table_name = validate_table_name(table_name)
     column_name = validate_column_name(
         column_name
     )
 
-    inspector = inspect(engine)
+    inspector = inspect(connection if connection is not None else engine)
 
     if not inspector.has_table(table_name):
         raise ValueError(
@@ -3471,6 +3626,7 @@ def _normalize_relationship_pairs(
     source_column: str | None = None,
     target_column: str | None = None,
     column_pairs: list | None = None,
+    connection=None,
 ):
     raw_pairs = list(column_pairs or [])
 
@@ -3553,10 +3709,12 @@ def _normalize_relationship_pairs(
         source_meta = _get_column_metadata(
             source_table,
             source_name,
+            connection=connection,
         )
         target_meta = _get_column_metadata(
             target_table,
             target_name,
+            connection=connection,
         )
 
         compatibility = (
@@ -3651,10 +3809,12 @@ def _serialize_relationship(
         source_meta = _get_column_metadata(
             row["source_table"],
             pair["source_column"],
+            connection=connection,
         )
         target_meta = _get_column_metadata(
             row["target_table"],
             pair["target_column"],
+            connection=connection,
         )
 
         compatibility = (
@@ -3814,6 +3974,7 @@ def create_table_relationship(
     source_column: str | None = None,
     target_column: str | None = None,
     column_pairs: list | None = None,
+    connection=None,
 ):
     source_table = validate_table_name(
         source_table
@@ -3838,6 +3999,7 @@ def create_table_relationship(
         source_column=source_column,
         target_column=target_column,
         column_pairs=column_pairs,
+        connection=connection,
     )
 
     primary = pairs[0]
@@ -3874,85 +4036,15 @@ def create_table_relationship(
             "180 karakter."
         )
 
-    ensure_internal_tables()
+    if connection is None:
+        ensure_internal_tables()
 
-    requested_signature = (
-        _relationship_pair_signature(
-            pairs
-        )
-    )
-
-    with engine.begin() as connection:
-        existing_rows = connection.execute(
-            select(
-                relationships_table
-            ).where(
-                relationships_table.c.is_active
-                .is_(True)
-            )
-        ).mappings().all()
-
-        for row in existing_rows:
-            existing_pairs = (
-                _relationship_pair_rows(
-                    row["id"],
-                    connection=connection,
-                )
-            )
-
-            if not existing_pairs:
-                existing_pairs = [
-                    {
-                        "source_column":
-                            row["source_column"],
-                        "target_column":
-                            row["target_column"],
-                    }
-                ]
-
-            existing_signature = (
-                _relationship_pair_signature(
-                    existing_pairs
-                )
-            )
-
-            reverse_signature = tuple(
-                sorted(
-                    (
-                        pair["target_column"],
-                        pair["source_column"],
-                    )
-                    for pair in existing_pairs
-                )
-            )
-
-            same_direction = (
-                row["source_table"]
-                == source_table
-                and row["target_table"]
-                == target_table
-                and existing_signature
-                == requested_signature
-            )
-
-            reverse_direction = (
-                row["source_table"]
-                == target_table
-                and row["target_table"]
-                == source_table
-                and reverse_signature
-                == requested_signature
-            )
-
-            if (
-                same_direction
-                or reverse_direction
-            ):
-                raise ValueError(
-                    "Relationship untuk pasangan "
-                    "kolom tersebut sudah tersedia."
-                )
-
+    with (engine.begin() if connection is None else nullcontext(connection)) as connection:
+        lock_relationship_tables(connection, [source_table, target_table])
+        # Revalidate schema while coordinated with rename/masking/data writers.
+        pairs = _normalize_relationship_pairs(source_table=source_table, target_table=target_table,
+                                              column_pairs=pairs, connection=connection)
+        _assert_no_relationship_duplicate(connection, source_table, target_table, pairs)
         result = connection.execute(
             relationships_table.insert().values(
                 relationship_name=name,
@@ -4033,6 +4125,10 @@ def update_table_relationship(
                 "Relationship tidak ditemukan."
             )
 
+        lock_relationship_tables(connection, [current["source_table"], current["target_table"]])
+        if is_active:
+            _assert_no_relationship_duplicate(connection, current["source_table"], current["target_table"],
+                _relationship_pair_rows(relationship_id, connection=connection) or [current], exclude_id=relationship_id)
         values = {
             "updated_at": func.now(),
         }
@@ -4129,6 +4225,7 @@ def delete_table_relationship(
                 "Relationship tidak ditemukan."
             )
 
+        lock_relationship_tables(connection, [current["source_table"], current["target_table"]])
         connection.execute(
             relationship_columns_table.delete()
             .where(

@@ -1,0 +1,27 @@
+.tp-human-review { color: #323338; font-size: 12px; background: #fff; border: 1px solid #e6e9ef; border-radius: 12px; padding: 20px; }
+.tp-human-review h2 { font-size: 18px; font-weight: 650; margin: 0; }
+.tp-human-review h3 { font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
+.tp-human-review p { margin: 8px 0; line-height: 1.6; }
+.tp-human-review-toolbar, .tp-human-review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.tp-human-review-toolbar > div { flex: 1; }
+.tp-human-review button, .tp-human-review select, .tp-human-review input:not([type=checkbox]), .tp-human-review textarea { font: inherit; border: 1px solid #c3c6d4; border-radius: 6px; padding: 8px 10px; background: white; }
+.tp-human-review button { cursor: pointer; }
+.tp-human-review button:disabled, .tp-human-review input:disabled { opacity: .5; cursor: not-allowed; }
+.tp-human-review :focus-visible { outline: 2px solid #0073ea; outline-offset: 2px; }
+.tp-human-review-table-wrap { overflow-x: auto; max-height: 380px; margin-top: 16px; }
+.tp-human-review table { width: 100%; border-collapse: collapse; text-align: left; }
+.tp-human-review th, .tp-human-review td { padding: 10px; border-bottom: 1px solid #e6e9ef; }
+.tp-human-review th { background: #f6f7fb; position: sticky; top: 0; }
+.tp-human-review-evidence { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; }
+.tp-human-review article { border: 1px solid #e6e9ef; border-radius: 8px; padding: 14px; margin: 8px 0; }
+.tp-human-review ul { padding-left: 20px; list-style: disc; }
+.tp-human-review-error { color: #ad1735; }
+.tp-human-review-message { color: #166534; }
+.tp-human-review-form { display: grid; gap: 12px; margin-top: 20px; max-width: 760px; }
+.tp-human-review-form > button { justify-self: start; }
+.tp-human-review-form label { display: grid; gap: 6px; }
+.tp-human-review-form .tp-human-review-confirm { display: flex; align-items: flex-start; }
+.tp-human-review-confirm input { margin-top: 3px; }
+.tp-human-review button.tp-human-review-approve { background: #0073ea; color: white; border-color: #0073ea; }
+.tp-human-review-history { margin-top: 24px; }
+.tp-human-review summary { cursor: pointer; color: #0060b9; }

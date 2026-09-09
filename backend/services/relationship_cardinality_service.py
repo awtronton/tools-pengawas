@@ -1,4 +1,5 @@
 import math
+from services.relationship_freshness_service import quality_signature, candidate_signature, VERSION_FIELDS
 from concurrent.futures import ThreadPoolExecutor
 
 from database.table_service import (
@@ -228,11 +229,13 @@ def estimate_candidate_cardinality(
         "estimated_cardinality": cardinality,
         "cardinality_confidence": _clamp(cardinality_confidence),
         "evidence": {
+            "candidate_signature": candidate_signature(candidate),
             "metadata_only": True,
             "warehouse_rows_scanned": 0,
             "source": source["evidence"],
             "target": target["evidence"],
             "relationship_quality_confidence": quality_confidence,
+            "quality_score_signature": quality_signature(quality_score),
             "method": (
                 "observed_sample_duplicates_and_conservative_"
                 "uniqueness_estimation"
@@ -269,6 +272,7 @@ def run_relationship_cardinality_job(job_id: int):
                 if (
                     score is None
                     or score.get("is_stale")
+                    or any(score.get(k) != candidate[k] for k in VERSION_FIELDS)
                     or float(score.get("confidence_score") or 0.0)
                     < job["min_quality_score"]
                 ):
@@ -281,9 +285,8 @@ def run_relationship_cardinality_job(job_id: int):
             | {candidate["target_table"] for candidate in eligible}
         )
         profiles = get_column_profiles_for_tables(
-            tables,
-            include_stale=False,
-        )
+            tables, include_stale=False,
+        ) if tables else []
         profile_map = {
             (profile["table_name"], profile["column_name"]): profile
             for profile in profiles

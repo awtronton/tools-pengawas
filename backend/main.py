@@ -2,7 +2,7 @@ import json
 from io import BytesIO
 
 import pandas as pd
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -59,6 +59,11 @@ from services.relationship_intelligence_service import (
     list_relationship_candidates,
     queue_relationship_candidate_job,
     recover_relationship_candidate_queue,
+)
+
+from services.relationship_review_service import (
+    ReviewConflict, ReviewNotFound, get_candidate_review,
+    get_candidate_review_history, decide_candidate,
 )
 
 
@@ -154,6 +159,59 @@ class RelationshipCardinalityJobCreateRequest(BaseModel):
     min_discovery_score: float = 0.45
     min_quality_score: float = 0.55
     max_candidates: int = 5000
+
+
+class RelationshipReviewDecisionRequest(BaseModel):
+    candidate_ids: list[int] = Field(default_factory=list, max_length=12)
+    expected_revision: str = Field(min_length=64, max_length=64)
+    request_key: str = Field(min_length=1, max_length=64)
+    reviewed_by: str = Field(min_length=1, max_length=180)
+    review_note: str = Field(default="", max_length=4000)
+    relationship_name: str | None = Field(default=None, max_length=180)
+    cardinality: str | None = None
+    composite_cardinality_confirmed: bool = False
+
+
+def _review_response(action):
+    try:
+        return {"status": "success", **action()}
+    except ReviewNotFound as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ReviewConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/relationship-intelligence/candidates/{candidate_id}/review",
+         responses={400: {"description": "Invalid review scope"}, 404: {"description": "Candidate not found"}})
+def candidate_review_detail(candidate_id: int, candidate_ids: list[int] | None = Query(None)):
+    return _review_response(lambda: get_candidate_review(candidate_id, candidate_ids))
+
+
+@app.get("/relationship-intelligence/candidates/{candidate_id}/reviews",
+         responses={400: {"description": "Invalid review scope"}, 404: {"description": "Candidate not found"}})
+def candidate_review_history(candidate_id: int, limit: int = Query(50, ge=1, le=200),
+                             before_id: int | None = Query(None, ge=1)):
+    def action():
+        rows = get_candidate_review_history(candidate_id, limit, before_id)
+        return {"reviews": rows, "count": len(rows),
+                "next_before_id": rows[-1]["id"] if len(rows) == limit else None}
+    return _review_response(action)
+
+
+@app.post("/relationship-intelligence/candidates/{candidate_id}/approve",
+          responses={400: {"description": "Invalid decision"}, 404: {"description": "Candidate not found"},
+                     409: {"description": "Stale evidence, conflicting decision, or duplicate relationship"}})
+def approve_candidate(candidate_id: int, payload: RelationshipReviewDecisionRequest):
+    return _review_response(lambda: decide_candidate(candidate_id, "approved", payload.model_dump()))
+
+
+@app.post("/relationship-intelligence/candidates/{candidate_id}/reject",
+          responses={400: {"description": "Invalid decision"}, 404: {"description": "Candidate not found"},
+                     409: {"description": "Stale evidence, conflicting decision, or duplicate relationship"}})
+def reject_candidate(candidate_id: int, payload: RelationshipReviewDecisionRequest):
+    return _review_response(lambda: decide_candidate(candidate_id, "rejected", payload.model_dump()))
 
 
 def dataframe_to_records(df):

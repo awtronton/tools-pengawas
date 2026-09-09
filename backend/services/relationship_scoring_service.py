@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from services.relationship_freshness_service import candidate_signature
 
 from database.table_service import (
     claim_relationship_scoring_job,
@@ -109,7 +110,7 @@ def score_candidate(candidate, source_profile, target_profile):
         "evidence_sufficiency_score": evidence_sufficiency, "penalty_score": penalty,
         "confidence_score": confidence, "confidence_level": level,
         "component_scores": {**components, "weights": weights}, "quality_flags": flags,
-        "rationale": {"metadata_only": True, "warehouse_rows_scanned": 0, "source_distinct_ratio": sd, "target_distinct_ratio": td, "source_null_ratio": source_null, "target_null_ratio": target_null},
+        "rationale": {"candidate_signature": candidate_signature(candidate), "metadata_only": True, "warehouse_rows_scanned": 0, "source_distinct_ratio": sd, "target_distinct_ratio": td, "source_null_ratio": source_null, "target_null_ratio": target_null},
     }
 
 

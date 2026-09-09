@@ -32,6 +32,7 @@ import WorkspacePageHeader from '../components/ui/WorkspacePageHeader'
 import CardinalityHelper from '../components/schema/CardinalityHelper'
 import RelationshipCanvas from '../components/schema/RelationshipCanvas'
 import VisualSqlBuilder from '../components/schema/VisualSqlBuilder'
+import RelationshipReviewPanel from '../components/schema/RelationshipReviewPanel'
 import {
   createTableRelationship,
   deleteTableRelationship,
@@ -957,6 +958,10 @@ function SchemaManager() {
             Visual SQL Builder
             <span>Foundation</span>
           </button>
+          <button type="button" className={`tp-schema-tab ${activeTab === 'approval' ? 'is-active' : ''}`}
+            onClick={() => setActiveTab('approval')}>
+            <ShieldCheck size={14} /> Human Approval
+          </button>
         </nav>
 
         {error && (
@@ -972,7 +977,9 @@ function SchemaManager() {
           </div>
         )}
 
-        {activeTab === 'review' ? (
+        {activeTab === 'approval' ? (
+          <RelationshipReviewPanel onPromoted={loadRelationships} />
+        ) : activeTab === 'review' ? (
           <>
             <section className="tp-schema-toolbar">
               <div className="tp-schema-table-select">

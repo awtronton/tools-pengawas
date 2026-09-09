@@ -24,10 +24,12 @@ async function requestJson(url, options, fallbackMessage) {
           ? detail.message || JSON.stringify(detail)
           : "";
 
-    throw new Error(
+    const error = new Error(
       detailMessage ||
         `${fallbackMessage} (HTTP ${response.status})`
     );
+    error.status = response.status;
+    throw error;
   }
 
   return response.json();
@@ -341,4 +343,39 @@ export async function deleteTableRelationship(relationshipId) {
     },
     "Gagal menghapus relationship"
   );
+}
+
+export function getRelationshipCandidates(status = "pending") {
+  const params = new URLSearchParams({ status, include_stale: "true", limit: "2000" });
+  return requestJson(`${API_URL}/relationship-intelligence/candidates?${params}`, {}, "Gagal membaca candidate");
+}
+
+export function getRelationshipReview(candidateId, candidateIds = []) {
+  const params = new URLSearchParams();
+  candidateIds.forEach(id => params.append("candidate_ids", String(id)));
+  return requestJson(`${API_URL}/relationship-intelligence/candidates/${candidateId}/review?${params}`, {}, "Gagal membaca review");
+}
+
+export function getRelationshipReviewHistory(candidateId, beforeId) {
+  const params = new URLSearchParams({ limit: "20" });
+  if (beforeId) params.set("before_id", String(beforeId));
+  return requestJson(`${API_URL}/relationship-intelligence/candidates/${candidateId}/reviews?${params}`, {}, "Gagal membaca riwayat review");
+}
+
+export function decideRelationshipCandidate(candidateId, decision, payload) {
+  return requestJson(`${API_URL}/relationship-intelligence/candidates/${candidateId}/${decision}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  }, "Gagal menyimpan keputusan review");
+}
+
+export function queueRelationshipAnalysis(kind, payload) {
+  if (!["scoring", "cardinality"].includes(kind)) throw new Error("Analisis tidak valid");
+  return requestJson(`${API_URL}/relationship-intelligence/${kind}-jobs`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  }, "Gagal mengantrekan analisis");
+}
+
+export function getRelationshipAnalysisJob(kind, id) {
+  if (!["scoring", "cardinality"].includes(kind)) throw new Error("Analisis tidak valid");
+  return requestJson(`${API_URL}/relationship-intelligence/${kind}-jobs/${id}`, {}, "Gagal membaca analisis");
 }
