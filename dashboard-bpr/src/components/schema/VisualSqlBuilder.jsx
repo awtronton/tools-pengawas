@@ -88,14 +88,51 @@ function columnKey(
   return `${tableName}::${columnName}`
 }
 
+function relationshipPairs(
+  relationship,
+) {
+  const pairs =
+    relationship?.column_pairs
+
+  if (
+    Array.isArray(pairs) &&
+    pairs.length > 0
+  ) {
+    return pairs
+  }
+
+  return [
+    {
+      source_column:
+        relationship.source_column,
+      target_column:
+        relationship.target_column,
+    },
+  ]
+}
+
 function relationLabel(
   relationship,
 ) {
-  return (
+  const pairs =
+    relationshipPairs(
+      relationship,
+    )
+
+  const first = pairs[0]
+
+  const base =
     `${relationship.source_table}.` +
-    `${relationship.source_column} ↔ ` +
+    `${first.source_column} ↔ ` +
     `${relationship.target_table}.` +
-    `${relationship.target_column}`
+    `${first.target_column}`
+
+  if (pairs.length === 1) {
+    return base
+  }
+
+  return (
+    `${base} + ${pairs.length - 1} key`
   )
 }
 
@@ -331,20 +368,43 @@ function buildSql({
       )} AS ${newAlias}`,
     )
 
+    const pairs =
+      relationshipPairs(
+        relationship,
+      )
+
+    const joinConditions =
+      pairs.map(
+        (pair) =>
+          `${sourceAlias}.${quoteIdentifier(
+            pair.source_column,
+          )} = ${targetAlias}.${quoteIdentifier(
+            pair.target_column,
+          )}`,
+      )
+
     lines.push(
-      `    ON ${sourceAlias}.${quoteIdentifier(
-        relationship.source_column,
-      )} = ${targetAlias}.${quoteIdentifier(
-        relationship.target_column,
-      )}`,
+      `    ON ${joinConditions[0]}`,
     )
+
+    for (
+      const condition
+      of joinConditions.slice(1)
+    ) {
+      lines.push(
+        `    AND ${condition}`,
+      )
+    }
+
+    const primaryPair =
+      pairs[0]
 
     if (isLeftAnti) {
       const newColumn =
         relationship.source_table ===
         step.newTable
-          ? relationship.source_column
-          : relationship.target_column
+          ? primaryPair.source_column
+          : primaryPair.target_column
 
       antiFilters.push(
         `${newAlias}.${quoteIdentifier(
@@ -362,8 +422,8 @@ function buildSql({
       const existingColumn =
         relationship.source_table ===
         step.existingTable
-          ? relationship.source_column
-          : relationship.target_column
+          ? primaryPair.source_column
+          : primaryPair.target_column
 
       antiFilters.push(
         `${existingAlias}.${quoteIdentifier(
@@ -375,9 +435,9 @@ function buildSql({
     if (isFullAnti) {
       antiFilters.push(
         `(${sourceAlias}.${quoteIdentifier(
-          relationship.source_column,
+          primaryPair.source_column,
         )} IS NULL OR ${targetAlias}.${quoteIdentifier(
-          relationship.target_column,
+          primaryPair.target_column,
         )} IS NULL)`,
       )
     }

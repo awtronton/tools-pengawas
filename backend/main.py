@@ -34,11 +34,31 @@ from services.excel_processor import (
     get_excel_sheets,
     process_excel,
 )
+from services.profiling_service import (
+    get_profile_job_status,
+    get_table_profile_snapshot,
+    list_profile_jobs,
+    queue_profile_job,
+    recover_profile_queue,
+)
+from services.relationship_scoring_service import (
+    get_relationship_scoring_job_status,
+    list_relationship_scoring_jobs,
+    queue_relationship_scoring_job,
+    recover_relationship_scoring_queue,
+)
+from services.relationship_intelligence_service import (
+    get_relationship_candidate_job_status,
+    list_relationship_candidate_jobs,
+    list_relationship_candidates,
+    queue_relationship_candidate_job,
+    recover_relationship_candidate_queue,
+)
 
 
 app = FastAPI(
     title="OJK Data Warehouse API",
-    version="1.2.0",
+    version="1.5.0",
 )
 
 
@@ -76,12 +96,18 @@ class ColumnMaskingRequest(BaseModel):
 
 
 
+class RelationshipColumnPairRequest(BaseModel):
+    source_column: str
+    target_column: str
+
+
 class RelationshipCreateRequest(BaseModel):
     relationship_name: str | None = None
     source_table: str
-    source_column: str
+    source_column: str | None = None
     target_table: str
-    target_column: str
+    target_column: str | None = None
+    column_pairs: list[RelationshipColumnPairRequest] | None = None
     cardinality: str
 
 
@@ -89,6 +115,30 @@ class RelationshipUpdateRequest(BaseModel):
     relationship_name: str | None = None
     cardinality: str | None = None
     is_active: bool | None = None
+
+
+class ProfilingJobCreateRequest(BaseModel):
+    table_name: str
+    columns: list[str] | None = None
+    target_sample_rows: int = 50000
+    profile_strategy: str = "adaptive"
+
+
+class RelationshipCandidateJobCreateRequest(BaseModel):
+    scan_mode: str = "selected"
+    source_tables: list[str] | None = None
+    target_tables: list[str] | None = None
+    min_discovery_score: float = 0.45
+    max_candidates: int = 1000
+    include_system_columns: bool = True
+
+
+class RelationshipScoringJobCreateRequest(BaseModel):
+    source_tables: list[str] | None = None
+    target_tables: list[str] | None = None
+    candidate_status: str = "pending"
+    min_discovery_score: float = 0.45
+    max_candidates: int = 5000
 
 
 def dataframe_to_records(df):
@@ -275,6 +325,50 @@ def process_upload_by_mode(
 
 
 # =====================================================
+# PROFILING RUNTIME
+# =====================================================
+
+@app.on_event("startup")
+def recover_warehouse_profiling_queue():
+    try:
+        recovered = recover_profile_queue()
+        if recovered:
+            print(
+                f"Recovered {recovered} profiling job(s)."
+            )
+    except Exception as error:
+        print(
+            "WARNING profiling queue recovery:",
+            repr(error),
+        )
+
+
+@app.on_event("startup")
+def recover_relationship_intelligence_queue():
+    try:
+        recovered = recover_relationship_candidate_queue()
+        if recovered:
+            print(
+                f"Recovered {recovered} relationship candidate job(s)."
+            )
+    except Exception as error:
+        print(
+            "WARNING relationship candidate queue recovery:",
+            repr(error),
+        )
+
+
+@app.on_event("startup")
+def recover_relationship_scoring_runtime():
+    try:
+        recovered = recover_relationship_scoring_queue()
+        if recovered:
+            print(f"Recovered {recovered} relationship scoring job(s).")
+    except Exception as error:
+        print("WARNING relationship scoring queue recovery:", repr(error))
+
+
+# =====================================================
 # HEALTH CHECK
 # =====================================================
 
@@ -422,6 +516,254 @@ def update_column_masking(
         )
 
 
+# =====================================================
+# COLUMN PROFILING
+# =====================================================
+
+@app.post("/profiling/jobs")
+def create_profiling_job(
+    payload: ProfilingJobCreateRequest,
+):
+    try:
+        result = queue_profile_job(
+            table_name=payload.table_name,
+            columns=payload.columns,
+            target_sample_rows=(
+                payload.target_sample_rows
+            ),
+            profile_strategy=(
+                payload.profile_strategy
+            ),
+        )
+
+        return {
+            "status": "success",
+            **result,
+        }
+
+    except Exception as error:
+        print(
+            "ERROR POST /profiling/jobs:",
+            repr(error),
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.get("/profiling/jobs")
+def profiling_jobs(
+    table_name: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+):
+    try:
+        rows = list_profile_jobs(
+            table_name=table_name,
+            limit=limit,
+        )
+        return {
+            "status": "success",
+            "count": len(rows),
+            "jobs": rows,
+        }
+    except Exception as error:
+        print(
+            "ERROR GET /profiling/jobs:",
+            repr(error),
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.get("/profiling/jobs/{job_id}")
+def profiling_job(job_id: int):
+    try:
+        job = get_profile_job_status(job_id)
+        return {
+            "status": "success",
+            "job": job,
+        }
+    except Exception as error:
+        print(
+            "ERROR GET /profiling/jobs/{job_id}:",
+            repr(error),
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.get("/profiling/tables/{table_name}")
+def table_profile(table_name: str):
+    try:
+        snapshot = get_table_profile_snapshot(
+            table_name
+        )
+        return {
+            "status": "success",
+            **snapshot,
+        }
+    except Exception as error:
+        print(
+            "ERROR GET /profiling/tables/{table_name}:",
+            repr(error),
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+
+# =====================================================
+# RELATIONSHIP INTELLIGENCE — CANDIDATE GENERATOR
+# =====================================================
+
+@app.post("/relationship-intelligence/candidate-jobs")
+def create_relationship_candidate_job(
+    payload: RelationshipCandidateJobCreateRequest,
+):
+    try:
+        result = queue_relationship_candidate_job(
+            scan_mode=payload.scan_mode,
+            source_tables=payload.source_tables,
+            target_tables=payload.target_tables,
+            min_discovery_score=payload.min_discovery_score,
+            max_candidates=payload.max_candidates,
+            include_system_columns=payload.include_system_columns,
+        )
+        return {
+            "status": "success",
+            **result,
+        }
+    except Exception as error:
+        print(
+            "ERROR POST /relationship-intelligence/candidate-jobs:",
+            repr(error),
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.get("/relationship-intelligence/candidate-jobs")
+def relationship_candidate_jobs(
+    limit: int = Query(50, ge=1, le=200),
+):
+    try:
+        rows = list_relationship_candidate_jobs(limit=limit)
+        return {
+            "status": "success",
+            "count": len(rows),
+            "jobs": rows,
+        }
+    except Exception as error:
+        print(
+            "ERROR GET /relationship-intelligence/candidate-jobs:",
+            repr(error),
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.get("/relationship-intelligence/candidate-jobs/{job_id}")
+def relationship_candidate_job(job_id: int):
+    try:
+        job = get_relationship_candidate_job_status(job_id)
+        return {
+            "status": "success",
+            "job": job,
+        }
+    except Exception as error:
+        print(
+            "ERROR GET /relationship-intelligence/candidate-jobs/{job_id}:",
+            repr(error),
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+@app.get("/relationship-intelligence/candidates")
+def relationship_candidates(
+    source_table: str | None = Query(None),
+    target_table: str | None = Query(None),
+    candidate_status: str | None = Query(None, alias="status"),
+    include_stale: bool = Query(False),
+    min_discovery_score: float = Query(0.0, ge=0.0, le=1.0),
+    limit: int = Query(200, ge=1, le=2000),
+):
+    try:
+        rows = list_relationship_candidates(
+            source_table=source_table,
+            target_table=target_table,
+            status=candidate_status,
+            include_stale=include_stale,
+            min_discovery_score=min_discovery_score,
+            limit=limit,
+        )
+        return {
+            "status": "success",
+            "count": len(rows),
+            "candidates": rows,
+        }
+    except Exception as error:
+        print(
+            "ERROR GET /relationship-intelligence/candidates:",
+            repr(error),
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+
+
+# =====================================================
+# RELATIONSHIP INTELLIGENCE — QUALITY SCORING
+# =====================================================
+
+@app.post("/relationship-intelligence/scoring-jobs")
+def create_relationship_scoring_job(payload: RelationshipScoringJobCreateRequest):
+    try:
+        result = queue_relationship_scoring_job(
+            source_tables=payload.source_tables, target_tables=payload.target_tables,
+            candidate_status=payload.candidate_status, min_discovery_score=payload.min_discovery_score,
+            max_candidates=payload.max_candidates,
+        )
+        return {"status":"success", **result}
+    except Exception as error:
+        print("ERROR POST /relationship-intelligence/scoring-jobs:", repr(error))
+        raise HTTPException(status_code=400, detail=str(error))
+
+@app.get("/relationship-intelligence/scoring-jobs")
+def relationship_scoring_jobs(limit: int = Query(50, ge=1, le=200)):
+    try:
+        rows=list_relationship_scoring_jobs(limit=limit)
+        return {"status":"success","count":len(rows),"jobs":rows}
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+@app.get("/relationship-intelligence/scoring-jobs/{job_id}")
+def relationship_scoring_job(job_id: int):
+    try:
+        return {"status":"success","job":get_relationship_scoring_job_status(job_id)}
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+# =====================================================
+# TABLE RELATIONSHIPS
+# =====================================================
+
 @app.get("/relationships")
 def relationships(
     table_name: str | None = Query(None),
@@ -462,6 +804,17 @@ def create_relationship(
             source_column=payload.source_column,
             target_table=payload.target_table,
             target_column=payload.target_column,
+            column_pairs=[
+                {
+                    "source_column":
+                        pair.source_column,
+                    "target_column":
+                        pair.target_column,
+                }
+                for pair in (
+                    payload.column_pairs or []
+                )
+            ] or None,
             cardinality=payload.cardinality,
         )
 

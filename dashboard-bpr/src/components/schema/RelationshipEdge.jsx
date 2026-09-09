@@ -193,6 +193,16 @@ function RelationshipEdge({
             relationship.cardinality
           ] ||
             relationship.cardinality}
+          {(relationship.pair_count ||
+            relationship.column_pairs
+              ?.length ||
+            1) > 1
+            ? ` · ${
+                relationship.pair_count ||
+                relationship.column_pairs
+                  ?.length
+              } keys`
+            : ''}
         </div>
       </EdgeLabelRenderer>
     </>

@@ -61,6 +61,14 @@ function columnFromHandle(
 function relationshipEdge(
   relationship,
 ) {
+  const primaryPair =
+    relationship.column_pairs?.[0] || {
+      source_column:
+        relationship.source_column,
+      target_column:
+        relationship.target_column,
+    }
+
   return {
     id: `relationship::${relationship.id}`,
     type: 'relationship',
@@ -71,9 +79,9 @@ function relationshipEdge(
       relationship.target_table,
     ),
     sourceHandle:
-      `source::${relationship.source_column}`,
+      `source::${primaryPair.source_column}`,
     targetHandle:
-      `target::${relationship.target_column}`,
+      `target::${primaryPair.target_column}`,
     data: {
       relationship,
     },

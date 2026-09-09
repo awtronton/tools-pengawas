@@ -100,6 +100,49 @@ function periodLabel(summary) {
   return `${summary.min_year ?? '-'}–${summary.max_year ?? '-'}`
 }
 
+function normalizeRelationshipType(value) {
+  const type = String(
+    value || '',
+  ).toUpperCase()
+
+  if (
+    /SMALLINT|INTEGER|BIGINT|NUMERIC|DECIMAL|REAL|FLOAT|DOUBLE/.test(
+      type,
+    )
+  ) {
+    return 'numeric'
+  }
+
+  if (
+    /CHAR|TEXT|STRING|VARCHAR/.test(
+      type,
+    )
+  ) {
+    return 'text'
+  }
+
+  if (/TIMESTAMP/.test(type)) {
+    return 'timestamp'
+  }
+
+  if (/^DATE/.test(type)) {
+    return 'date'
+  }
+
+  if (/BOOL/.test(type)) {
+    return 'boolean'
+  }
+
+  return type
+}
+
+function emptyRelationshipPair() {
+  return {
+    source_column: '',
+    target_column: '',
+  }
+}
+
 function SchemaManager() {
   const [activeTab, setActiveTab] =
     useState('review')
@@ -118,12 +161,12 @@ function SchemaManager() {
 
   const [sourceTable, setSourceTable] =
     useState('')
-  const [sourceColumn, setSourceColumn] =
-    useState('')
   const [targetTable, setTargetTable] =
     useState('')
-  const [targetColumn, setTargetColumn] =
-    useState('')
+  const [columnPairs, setColumnPairs] =
+    useState([
+      emptyRelationshipPair(),
+    ])
   const [cardinality, setCardinality] =
     useState('one_to_many')
   const [relationshipName, setRelationshipName] =
@@ -293,74 +336,75 @@ function SchemaManager() {
     [targetDetail],
   )
 
-  const selectedSourceColumn =
-    sourceColumnOptions.find(
-      (option) =>
-        option.value === sourceColumn,
-    ) || null
+  const relationshipPairDetails =
+    useMemo(
+      () =>
+        columnPairs.map((pair) => {
+          const source =
+            sourceColumnOptions.find(
+              (option) =>
+                option.value ===
+                pair.source_column,
+            ) || null
 
-  const selectedTargetColumn =
-    targetColumnOptions.find(
-      (option) =>
-        option.value === targetColumn,
-    ) || null
+          const target =
+            targetColumnOptions.find(
+              (option) =>
+                option.value ===
+                pair.target_column,
+            ) || null
 
-  const relationCompatibility =
+          const compatible =
+            source && target
+              ? normalizeRelationshipType(
+                  source.dataType,
+                ) ===
+                normalizeRelationshipType(
+                  target.dataType,
+                )
+              : null
+
+          return {
+            ...pair,
+            source,
+            target,
+            compatible,
+          }
+        }),
+      [
+        columnPairs,
+        sourceColumnOptions,
+        targetColumnOptions,
+      ],
+    )
+
+  const periodKeyAvailable =
     useMemo(() => {
-      if (
-        !selectedSourceColumn ||
-        !selectedTargetColumn
-      ) {
-        return null
-      }
+      const required = [
+        'bank_id',
+        'bulan',
+        'tahun',
+      ]
 
-      const normalize = (value) => {
-        const type = String(
-          value || '',
-        ).toUpperCase()
+      const sourceSet = new Set(
+        sourceColumnOptions.map(
+          (option) => option.value,
+        ),
+      )
+      const targetSet = new Set(
+        targetColumnOptions.map(
+          (option) => option.value,
+        ),
+      )
 
-        if (
-          /SMALLINT|INTEGER|BIGINT|NUMERIC|DECIMAL|REAL|FLOAT|DOUBLE/.test(
-            type,
-          )
-        ) {
-          return 'numeric'
-        }
-
-        if (
-          /CHAR|TEXT|STRING|VARCHAR/.test(
-            type,
-          )
-        ) {
-          return 'text'
-        }
-
-        if (/TIMESTAMP/.test(type)) {
-          return 'timestamp'
-        }
-
-        if (/^DATE/.test(type)) {
-          return 'date'
-        }
-
-        if (/BOOL/.test(type)) {
-          return 'boolean'
-        }
-
-        return type
-      }
-
-      return (
-        normalize(
-          selectedSourceColumn.dataType,
-        ) ===
-        normalize(
-          selectedTargetColumn.dataType,
-        )
+      return required.every(
+        (column) =>
+          sourceSet.has(column) &&
+          targetSet.has(column),
       )
     }, [
-      selectedSourceColumn,
-      selectedTargetColumn,
+      sourceColumnOptions,
+      targetColumnOptions,
     ])
 
   async function loadTables({
@@ -444,11 +488,9 @@ function SchemaManager() {
   async function loadRelationshipDetail(
     tableName,
     setter,
-    resetColumn,
   ) {
     if (!tableName) {
       setter(null)
-      resetColumn('')
       return
     }
 
@@ -457,7 +499,6 @@ function SchemaManager() {
         await getTableDetail(tableName)
 
       setter(response)
-      resetColumn('')
     } catch (err) {
       console.error(err)
       setError(
@@ -507,21 +548,24 @@ function SchemaManager() {
   }, [selectedTable])
 
   useEffect(() => {
+    setColumnPairs([
+      emptyRelationshipPair(),
+    ])
     loadRelationshipDetail(
       sourceTable,
       setSourceDetail,
-      setSourceColumn,
     )
   }, [sourceTable])
 
   useEffect(() => {
+    setColumnPairs([
+      emptyRelationshipPair(),
+    ])
     loadRelationshipDetail(
       targetTable,
       setTargetDetail,
-      setTargetColumn,
     )
   }, [targetTable])
-
 
   useEffect(() => {
     if (
@@ -567,15 +611,17 @@ function SchemaManager() {
       sourceExists &&
       targetExists
     ) {
-      setSourceColumn(
-        canvasDraft.sourceColumn,
-      )
-      setTargetColumn(
-        canvasDraft.targetColumn,
-      )
+      setColumnPairs([
+        {
+          source_column:
+            canvasDraft.sourceColumn,
+          target_column:
+            canvasDraft.targetColumn,
+        },
+      ])
 
       setMessage(
-        'Connection dari canvas sudah dipilih. Tentukan cardinality lalu klik Add Relationship.',
+        'Connection dari canvas sudah dipilih sebagai key pertama. Tambahkan key lain bila relationship memerlukan composite key.',
       )
     }
 
@@ -601,23 +647,116 @@ function SchemaManager() {
     setCanvasDraft(draft)
   }
 
+  function updateRelationshipPair(
+    index,
+    field,
+    value,
+  ) {
+    setColumnPairs((current) =>
+      current.map((pair, pairIndex) =>
+        pairIndex === index
+          ? {
+              ...pair,
+              [field]: value,
+            }
+          : pair,
+      ),
+    )
+  }
+
+  function addRelationshipPair() {
+    setColumnPairs((current) => [
+      ...current,
+      emptyRelationshipPair(),
+    ])
+  }
+
+  function removeRelationshipPair(index) {
+    setColumnPairs((current) => {
+      if (current.length <= 1) {
+        return [
+          emptyRelationshipPair(),
+        ]
+      }
+
+      return current.filter(
+        (_, pairIndex) =>
+          pairIndex !== index,
+      )
+    })
+  }
+
+  function applyPeriodCompositeKey() {
+    if (!periodKeyAvailable) {
+      return
+    }
+
+    setColumnPairs(
+      [
+        'bank_id',
+        'bulan',
+        'tahun',
+      ].map((column) => ({
+        source_column: column,
+        target_column: column,
+      })),
+    )
+
+    setMessage(
+      'Composite key bank_id + bulan + tahun diterapkan.',
+    )
+  }
+
   async function saveRelationship() {
     if (
       !sourceTable ||
-      !sourceColumn ||
-      !targetTable ||
-      !targetColumn
+      !targetTable
     ) {
       setError(
-        'Source dan target relationship harus lengkap.',
+        'Source Table dan Target Table harus dipilih.',
       )
       return
     }
 
+    const incompletePair =
+      columnPairs.some(
+        (pair) =>
+          !pair.source_column ||
+          !pair.target_column,
+      )
+
+    if (incompletePair) {
+      setError(
+        'Setiap pasangan join harus memiliki Source Column dan Target Column.',
+      )
+      return
+    }
+
+    const signatures =
+      columnPairs.map(
+        (pair) =>
+          `${pair.source_column}::${pair.target_column}`,
+      )
+
     if (
-      sourceTable === targetTable &&
-      sourceColumn === targetColumn
+      new Set(signatures).size !==
+      signatures.length
     ) {
+      setError(
+        'Pasangan join tidak boleh duplikat.',
+      )
+      return
+    }
+
+    const invalidSelfPair =
+      sourceTable === targetTable &&
+      columnPairs.some(
+        (pair) =>
+          pair.source_column ===
+          pair.target_column,
+      )
+
+    if (invalidSelfPair) {
       setError(
         'Source dan target tidak boleh merupakan kolom yang sama.',
       )
@@ -629,28 +768,50 @@ function SchemaManager() {
       setError('')
       setMessage('')
 
+      const primaryPair =
+        columnPairs[0]
+
       const response =
         await createTableRelationship({
           relationship_name:
             relationshipName.trim() || null,
           source_table: sourceTable,
-          source_column: sourceColumn,
+          source_column:
+            primaryPair.source_column,
           target_table: targetTable,
-          target_column: targetColumn,
+          target_column:
+            primaryPair.target_column,
+          column_pairs:
+            columnPairs.map(
+              (pair) => ({
+                source_column:
+                  pair.source_column,
+                target_column:
+                  pair.target_column,
+              }),
+            ),
           cardinality,
         })
 
       setRelationshipName('')
+      setColumnPairs([
+        emptyRelationshipPair(),
+      ])
       await loadRelationships()
 
       const warning =
         response?.relationship
           ?.compatibility_message
 
+      const pairCount =
+        response?.relationship
+          ?.pair_count ||
+        columnPairs.length
+
       setMessage(
         warning
-          ? `Relationship disimpan. ${warning}`
-          : 'Relationship berhasil disimpan.',
+          ? `Relationship ${pairCount} key disimpan. ${warning}`
+          : `Relationship ${pairCount} key berhasil disimpan.`,
       )
     } catch (err) {
       console.error(err)
@@ -691,11 +852,27 @@ function SchemaManager() {
   async function removeRelationship(
     relationship,
   ) {
+    const pairSummary = (
+      relationship.column_pairs || [
+        {
+          source_column:
+            relationship.source_column,
+          target_column:
+            relationship.target_column,
+        },
+      ]
+    )
+      .map(
+        (pair) =>
+          `${relationship.source_table}.${pair.source_column} ↔ ` +
+          `${relationship.target_table}.${pair.target_column}`,
+      )
+      .join('\n')
+
     const confirmed = window.confirm(
       `Hapus relationship?\n\n` +
         `${relationship.relationship_name}\n` +
-        `${relationship.source_table}.${relationship.source_column} ↔ ` +
-        `${relationship.target_table}.${relationship.target_column}`,
+        pairSummary,
     )
 
     if (!confirmed) return
@@ -1232,7 +1409,7 @@ function SchemaManager() {
                   Create Relationship
                 </div>
 
-                <div className="tp-relationship-form-grid">
+                <div className="tp-relationship-table-grid">
                   <div className="tp-relationship-field">
                     <label>
                       Source Table
@@ -1259,38 +1436,7 @@ function SchemaManager() {
                     />
                   </div>
 
-                  <div className="tp-relationship-field">
-                    <label>
-                      Source Column
-                    </label>
-
-                    <Dropdown
-                      options={
-                        sourceColumnOptions
-                      }
-                      value={
-                        sourceColumnOptions.find(
-                          (option) =>
-                            option.value ===
-                            sourceColumn,
-                        ) || null
-                      }
-                      onChange={(option) =>
-                        setSourceColumn(
-                          option?.value ||
-                            '',
-                        )
-                      }
-                      searchable
-                      clearable={false}
-                      disabled={
-                        !sourceTable
-                      }
-                      className="tp-vibe-dropdown"
-                    />
-                  </div>
-
-                  <div className="tp-relationship-connector">
+                  <div className="tp-relationship-table-connector">
                     <ArrowRightLeft
                       size={17}
                     />
@@ -1321,36 +1467,214 @@ function SchemaManager() {
                       className="tp-vibe-dropdown"
                     />
                   </div>
+                </div>
 
-                  <div className="tp-relationship-field">
-                    <label>
-                      Target Column
-                    </label>
+                <div className="tp-relationship-pairs-panel">
+                  <div className="tp-relationship-pairs-header">
+                    <div>
+                      <strong>
+                        Join Column Pairs
+                      </strong>
+                      <span>
+                        Satu relationship dapat menggunakan satu atau beberapa key.
+                      </span>
+                    </div>
 
-                    <Dropdown
-                      options={
-                        targetColumnOptions
-                      }
-                      value={
-                        targetColumnOptions.find(
-                          (option) =>
-                            option.value ===
-                            targetColumn,
-                        ) || null
-                      }
-                      onChange={(option) =>
-                        setTargetColumn(
-                          option?.value ||
-                            '',
-                        )
-                      }
-                      searchable
-                      clearable={false}
-                      disabled={
-                        !targetTable
-                      }
-                      className="tp-vibe-dropdown"
-                    />
+                    <div className="tp-relationship-pairs-actions">
+                      {periodKeyAvailable && (
+                        <button
+                          type="button"
+                          className="tp-relationship-period-key"
+                          onClick={
+                            applyPeriodCompositeKey
+                          }
+                        >
+                          bank_id + bulan + tahun
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        className="tp-relationship-add-pair"
+                        onClick={
+                          addRelationshipPair
+                        }
+                        disabled={
+                          !sourceTable ||
+                          !targetTable ||
+                          columnPairs.length >=
+                            12
+                        }
+                      >
+                        <Plus size={12} />
+                        Add Column Pair
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="tp-relationship-pair-list">
+                    {relationshipPairDetails.map(
+                      (pair, index) => (
+                        <div
+                          key={`pair-${index}`}
+                          className="tp-relationship-pair-row"
+                        >
+                          <div className="tp-relationship-field">
+                            <label>
+                              Source Column{' '}
+                              {index + 1}
+                            </label>
+
+                            <Dropdown
+                              options={
+                                sourceColumnOptions
+                              }
+                              value={
+                                sourceColumnOptions.find(
+                                  (option) =>
+                                    option.value ===
+                                    pair.source_column,
+                                ) || null
+                              }
+                              onChange={(option) =>
+                                updateRelationshipPair(
+                                  index,
+                                  'source_column',
+                                  option?.value ||
+                                    '',
+                                )
+                              }
+                              searchable
+                              clearable={false}
+                              disabled={
+                                !sourceTable
+                              }
+                              className="tp-vibe-dropdown"
+                            />
+
+                            {pair.source && (
+                              <small className="tp-relationship-pair-type">
+                                {
+                                  pair.source
+                                    .dataType
+                                }
+                                {pair.source
+                                  .masked
+                                  ? ' · masked'
+                                  : ''}
+                              </small>
+                            )}
+                          </div>
+
+                          <div className="tp-relationship-pair-connector">
+                            <Link2 size={13} />
+                          </div>
+
+                          <div className="tp-relationship-field">
+                            <label>
+                              Target Column{' '}
+                              {index + 1}
+                            </label>
+
+                            <Dropdown
+                              options={
+                                targetColumnOptions
+                              }
+                              value={
+                                targetColumnOptions.find(
+                                  (option) =>
+                                    option.value ===
+                                    pair.target_column,
+                                ) || null
+                              }
+                              onChange={(option) =>
+                                updateRelationshipPair(
+                                  index,
+                                  'target_column',
+                                  option?.value ||
+                                    '',
+                                )
+                              }
+                              searchable
+                              clearable={false}
+                              disabled={
+                                !targetTable
+                              }
+                              className="tp-vibe-dropdown"
+                            />
+
+                            {pair.target && (
+                              <small className="tp-relationship-pair-type">
+                                {
+                                  pair.target
+                                    .dataType
+                                }
+                                {pair.target
+                                  .masked
+                                  ? ' · masked'
+                                  : ''}
+                              </small>
+                            )}
+                          </div>
+
+                          <div
+                            className={`tp-relationship-pair-status ${
+                              pair.compatible ===
+                              false
+                                ? 'is-warning'
+                                : pair.compatible
+                                  ? 'is-compatible'
+                                  : ''
+                            }`}
+                            title={
+                              pair.compatible ===
+                              false
+                                ? 'Datatype berbeda'
+                                : pair.compatible
+                                  ? 'Datatype compatible'
+                                  : 'Pilih kedua kolom'
+                            }
+                          >
+                            {pair.compatible ===
+                            false ? (
+                              <AlertCircle
+                                size={13}
+                              />
+                            ) : (
+                              <ShieldCheck
+                                size={13}
+                              />
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            className="tp-relationship-remove-pair"
+                            onClick={() =>
+                              removeRelationshipPair(
+                                index,
+                              )
+                            }
+                            disabled={
+                              columnPairs.length <=
+                              1
+                            }
+                            title="Hapus pasangan kolom"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      ),
+                    )}
+                  </div>
+
+                  <div className="tp-relationship-pairs-note">
+                    <Link2 size={12} />
+                    Kondisi join akan dibentuk dengan
+                    {' '}
+                    <strong>AND</strong>
+                    {' '}
+                    untuk seluruh pasangan key.
                   </div>
                 </div>
 
@@ -1410,60 +1734,57 @@ function SchemaManager() {
                   }
                 />
 
-                {selectedSourceColumn &&
-                  selectedTargetColumn && (
-                    <div
-                      className={`tp-relationship-compatibility ${
-                        relationCompatibility
-                          ? 'is-compatible'
-                          : 'is-warning'
-                      }`}
-                    >
-                      <div>
-                        <strong>
-                          {
-                            selectedSourceColumn
-                              .dataType
-                          }
-                        </strong>
-                        <span>
-                          {
-                            sourceTable
-                          }
-                          .
-                          {
-                            sourceColumn
-                          }
-                        </span>
-                      </div>
-
-                      <Link2 size={14} />
-
-                      <div>
-                        <strong>
-                          {
-                            selectedTargetColumn
-                              .dataType
-                          }
-                        </strong>
-                        <span>
-                          {
-                            targetTable
-                          }
-                          .
-                          {
-                            targetColumn
-                          }
-                        </span>
-                      </div>
-
-                      <small>
-                        {relationCompatibility
-                          ? 'Datatype compatible'
-                          : 'Datatype berbeda — relationship tetap dapat disimpan, tetapi join mungkin memerlukan casting.'}
-                      </small>
+                {relationshipPairDetails.some(
+                  (pair) =>
+                    pair.source &&
+                    pair.target,
+                ) && (
+                  <div
+                    className={`tp-relationship-composite-summary ${
+                      relationshipPairDetails.some(
+                        (pair) =>
+                          pair.compatible ===
+                          false,
+                      )
+                        ? 'is-warning'
+                        : 'is-compatible'
+                    }`}
+                  >
+                    <div>
+                      <strong>
+                        {
+                          relationshipPairDetails
+                            .filter(
+                              (pair) =>
+                                pair.source &&
+                                pair.target,
+                            )
+                            .length
+                        }{' '}
+                        join key
+                      </strong>
+                      <span>
+                        {
+                          sourceTable
+                        }
+                        {' ↔ '}
+                        {
+                          targetTable
+                        }
+                      </span>
                     </div>
-                  )}
+
+                    <small>
+                      {relationshipPairDetails.some(
+                        (pair) =>
+                          pair.compatible ===
+                          false,
+                      )
+                        ? 'Ada pasangan datatype berbeda. Relationship tetap dapat disimpan, tetapi query mungkin memerlukan casting.'
+                        : 'Seluruh pasangan key yang terisi memiliki datatype compatible.'}
+                    </small>
+                  </div>
+                )}
 
                 <div className="tp-relationship-builder-footer">
                   <span>
@@ -1572,6 +1893,13 @@ function SchemaManager() {
                                   ] ||
                                   relationship.cardinality
                                 }
+                                {' · '}
+                                {
+                                  relationship.pair_count ||
+                                  relationship.column_pairs
+                                    ?.length ||
+                                  1
+                                } key
                               </span>
                             </div>
 
@@ -1588,26 +1916,14 @@ function SchemaManager() {
                             </span>
                           </div>
 
-                          <div className="tp-relationship-pair">
+                          <div className="tp-relationship-card-tables">
                             <div>
-                              <Database
-                                size={12}
-                              />
+                              <Database size={12} />
                               <strong>
                                 {
                                   relationship.source_table
                                 }
                               </strong>
-                              <span>
-                                {
-                                  relationship.source_column
-                                }
-                              </span>
-                              <small>
-                                {
-                                  relationship.source_data_type
-                                }
-                              </small>
                             </div>
 
                             <ArrowRightLeft
@@ -1615,25 +1931,70 @@ function SchemaManager() {
                             />
 
                             <div>
-                              <Database
-                                size={12}
-                              />
+                              <Database size={12} />
                               <strong>
                                 {
                                   relationship.target_table
                                 }
                               </strong>
-                              <span>
-                                {
-                                  relationship.target_column
-                                }
-                              </span>
-                              <small>
-                                {
-                                  relationship.target_data_type
-                                }
-                              </small>
                             </div>
+                          </div>
+
+                          <div className="tp-relationship-card-keys">
+                            {(
+                              relationship.column_pairs || [
+                                {
+                                  source_column:
+                                    relationship.source_column,
+                                  source_data_type:
+                                    relationship.source_data_type,
+                                  target_column:
+                                    relationship.target_column,
+                                  target_data_type:
+                                    relationship.target_data_type,
+                                  compatible:
+                                    relationship.compatible,
+                                },
+                              ]
+                            ).map(
+                              (pair, pairIndex) => (
+                                <div
+                                  key={`${relationship.id}-pair-${pairIndex}`}
+                                  className={`tp-relationship-card-key-row ${
+                                    pair.compatible ===
+                                    false
+                                      ? 'is-warning'
+                                      : ''
+                                  }`}
+                                >
+                                  <span>
+                                    {
+                                      pair.source_column
+                                    }
+                                  </span>
+
+                                  <small>
+                                    {
+                                      pair.source_data_type
+                                    }
+                                  </small>
+
+                                  <Link2 size={11} />
+
+                                  <span>
+                                    {
+                                      pair.target_column
+                                    }
+                                  </span>
+
+                                  <small>
+                                    {
+                                      pair.target_data_type
+                                    }
+                                  </small>
+                                </div>
+                              ),
+                            )}
                           </div>
 
                           {!relationship.compatible && (
